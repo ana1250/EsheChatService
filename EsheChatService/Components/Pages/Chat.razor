@@ -1,0 +1,600 @@
+@page "/"
+@page "/chat"
+@page "/chat/{SessionId:guid}"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.SignalR.Client
+@using Microsoft.AspNetCore.Http.Connections
+@inject IJSRuntime JS
+
+@using EsheChatService.Shared.Icons
+@using EsheChatService.Services
+@using EsheChatService.Models
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.EntityFrameworkCore
+@using Markdig
+@using EsheChatService.Services.Repositories
+
+@inject ChatService ChatService
+@inject ChatSessionManager SessionManager
+@inject NavigationManager Nav
+@inject ICurrentUser CurrentUser
+@using Microsoft.Extensions.DependencyInjection
+@inject IServiceScopeFactory ScopeFactory
+@inject ToastService ToastService
+
+@implements IAsyncDisposable
+
+<div class="chat-container">
+    @if (SessionManager.ActiveSession == null)
+    {
+        <div class="chat-header">
+            <h3>New Chat</h3>
+        </div>
+        <div class="chat-empty-state">
+            <h1>How can I help you?</h1>
+            <p>Start a new conversation by typing below.</p>
+        </div>
+    }
+    else
+    {
+        <div class="chat-header">
+            <h3>@SessionManager.ActiveSession.Title</h3>
+        </div>
+
+        <ul class="chat-messages" @ref="_messagesRef" @onscroll="OnMessagesScrolled">
+            @foreach (var msg in SessionManager.ActiveSession.Messages)
+            {
+                var roleClass = msg.Role.ToString().ToLower();
+                var lastAssistant = GetLastAssistantMessage();
+                var isLastAssistant = msg == lastAssistant;
+
+                <li class="message-wrapper @roleClass">
+                            <div class="avatar @roleClass">
+                                @if (msg.Role == ChatRole.User)
+                                {
+                                    <UserIcon />
+                                }
+                                else
+                                {
+                                    <AssistantIcon />
+                                }
+                            </div>
+
+                    <div class="chat-message @roleClass">
+                        <div class="message-content">
+                            @if (msg.Role == ChatRole.Assistant)
+                            {
+                                @((MarkupString)ToHtml(msg.Content))
+                            }
+                            else
+                            {
+                                @msg.Content
+                            }
+                        </div>
+                    </div>
+
+                    @if (msg.Role == ChatRole.Assistant)
+                    {
+                        <div class="message-actions" style="margin-top: 4px; gap: 8px; display: flex;">
+                            @if (isLastAssistant && !_isSending && !_assistantTyping && !IsReadOnly())
+                            {
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="RegenerateLast" style="font-size: 0.75rem; padding: 2px 8px; display: inline-flex; align-items: center; gap: 4px;">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                                    Regenerate
+                                </button>
+                            }
+                            <button class="btn btn-sm btn-outline-secondary" @onclick='() => CopyToClipboard(msg.Content)' style="font-size: 0.75rem; padding: 2px 8px; display: inline-flex; align-items: center; gap: 4px; opacity: 0.7;">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                                Copy
+                            </button>
+                        </div>
+                    }
+
+                </li>
+            }
+
+            @if (_assistantTyping)
+            {
+                <li class="message-wrapper assistant">
+                    <div class="avatar assistant">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2Z"></path><path d="M12 8v8"></path><path d="M8 12h8"></path></svg>
+                    </div>
+                    <div class="chat-message assistant typing" style="padding: 10px 16px;">
+                        <div class="typing-indicator">
+                            <div class="dot"></div>
+                            <div class="dot"></div>
+                            <div class="dot"></div>
+                        </div>
+                    </div>
+                </li>
+            }
+            <li style="height: 100px; flex-shrink: 0; list-style: none;"></li>
+        </ul>
+
+        @if (_showJumpToLatest)
+        {
+            <button class="jump-to-latest" @onclick="JumpToLatest">↓</button>
+        }
+
+    }
+
+    <div class="chat-input">
+        <textarea @bind="UserInput"
+               @bind:event="oninput"
+               placeholder="@(IsReadOnly() ? "Shared session (View Only)" : "Type your message…")"
+               disabled="@(_isSending || IsReadOnly())"
+               @onkeydown="HandleKeyDown"
+               @ref="_chatInputRef"
+               rows="1"></textarea>
+
+        @if (_assistantTyping && !_isSending && !IsReadOnly())
+        {
+            <button class="stop-btn" @onclick="StopGeneration" title="Stop generating">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="2" ry="2"></rect></svg>
+            </button>
+        }
+        else
+        {
+            <button @onclick="Send" disabled="@(string.IsNullOrWhiteSpace(UserInput) || _isSending || IsReadOnly())">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+            </button>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public Guid? SessionId { get; set; }
+
+    private string UserInput = "";
+    private bool _isSending;
+    private bool _assistantTyping;
+
+    private ElementReference _messagesRef;
+    private ElementReference _chatInputRef;
+    private bool _showJumpToLatest;
+    private bool _suppressPopupOnce;
+    private ScrollIntent _scrollIntent = ScrollIntent.None;
+    private bool _shouldFocusChatInput = true;
+    private CancellationTokenSource? _cts;
+
+    HubConnection? _hub;
+    
+    private bool IsReadOnly()
+    {
+        if (SessionManager.ActiveSession == null) return false;
+        return SessionManager.ActiveSession.UserOwnerId != CurrentUser.UserId;
+    }
+
+
+    protected override async Task OnInitializedAsync()
+    {
+        SessionManager.OnChange += StateHasChanged;
+
+        _hub = new HubConnectionBuilder()
+            .WithUrl(Nav.ToAbsoluteUri("/chathub"), options =>
+            {
+                options.Transports = HttpTransportType.WebSockets;
+            })
+            .WithAutomaticReconnect()
+            .Build();
+
+        _hub.On<Guid, string>("AssistantMessageReceived", async (messageId, message) =>
+        {
+            bool nearBottom = true;
+            try { nearBottom = await JS.InvokeAsync<bool>("chatScroll.isNearBottom", _messagesRef); } catch { }
+            SessionManager.AddMessageInMemory(ChatRole.Assistant, message, messageId);
+            _assistantTyping = false;
+            
+            if (nearBottom)
+            {
+                _scrollIntent = ScrollIntent.ForceScroll;
+                _showJumpToLatest = false;
+            }
+            else
+            {
+                _showJumpToLatest = true;
+            }
+            await InvokeAsync(StateHasChanged);
+        });
+
+        _hub.On<Guid, string>("UserMessageReceived", async (messageId, message) =>
+        {
+            bool nearBottom = true;
+            try { nearBottom = await JS.InvokeAsync<bool>("chatScroll.isNearBottom", _messagesRef); } catch { }
+            SessionManager.AddMessageInMemory(ChatRole.User, message, messageId);
+            if (nearBottom)
+            {
+                _scrollIntent = ScrollIntent.ForceScroll;
+                _showJumpToLatest = false;
+            }
+            else
+            {
+                _showJumpToLatest = true;
+            }
+            await InvokeAsync(StateHasChanged);
+        });
+
+
+        _hub.On<bool>("AssistantTyping", isTyping =>
+        {
+            _assistantTyping = isTyping;
+            InvokeAsync(StateHasChanged);
+        });
+
+        await _hub.StartAsync();
+    }
+
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_hub == null)
+            return;
+
+        if (SessionId.HasValue)
+        {
+            if (SessionManager.ActiveSession != null && SessionManager.ActiveSession.Id != SessionId.Value)
+            {
+                if (_hub.State == HubConnectionState.Connected)
+                {
+                    await _hub.InvokeAsync("LeaveSession", SessionManager.ActiveSession.Id);
+                }
+            }
+
+            if (_hub.State == HubConnectionState.Connected)
+            {
+                await _hub.InvokeAsync("JoinSession", SessionId.Value);
+            }
+
+            if (SessionManager.ActiveSession?.Id != SessionId.Value)
+            {
+                await SessionManager.SetActiveAsync(SessionId.Value);
+                _scrollIntent = ScrollIntent.ForceScroll;
+            }
+            _shouldFocusChatInput = true;
+        }
+        else if (SessionManager.ActiveSession != null)
+        {
+            if (_hub.State == HubConnectionState.Connected)
+            {
+                await _hub.InvokeAsync(
+                    "LeaveSession",
+                    SessionManager.ActiveSession.Id);
+            }
+
+            SessionManager.ClearActive();
+            _shouldFocusChatInput = true;
+        }
+    }
+
+
+    public async ValueTask DisposeAsync()
+    {
+        SessionManager.OnChange -= StateHasChanged;
+        _cts?.Cancel();
+        _cts?.Dispose();
+        
+        if (_hub != null)
+            await _hub.DisposeAsync();
+    }
+
+
+    private async Task Send()
+    {
+        if (_isSending || string.IsNullOrWhiteSpace(UserInput))
+            return;
+            
+        if (_assistantTyping)
+        {
+            StopGeneration();
+            // allow a brief moment for state changes to propagate
+            await Task.Yield();
+        }
+
+        _isSending = true;
+        var userMessage = UserInput;
+        UserInput = "";
+
+        try { await JS.InvokeVoidAsync("chatScroll.resetAutoResize", _chatInputRef); } catch { }
+
+        bool isNewSession = SessionManager.ActiveSession == null;
+
+        if (isNewSession)
+        {
+            await SessionManager.CreateSessionAsync(userMessage);
+            if (_hub!.State == HubConnectionState.Connected)
+            {
+                await _hub.InvokeAsync(
+                    "JoinSession",
+                    SessionManager.ActiveSession!.Id);
+            }
+        }
+            var userMsg = SessionManager.AddMessageInMemory(ChatRole.User, userMessage);
+            _scrollIntent = ScrollIntent.ForceScroll;
+            await InvokeAsync(StateHasChanged);
+
+            // Background tasks - handle thread safety with fresh scope
+            var currentSessionId = SessionManager.ActiveSession!.Id;
+            _ = Task.Run(async () =>
+            {
+                try 
+                {
+                    using var scope = ScopeFactory.CreateScope();
+                    var repo = scope.ServiceProvider.GetRequiredService<IChatRepository>();
+
+                    if (userMsg != null)
+                    {
+                        if (_hub != null && _hub.State == HubConnectionState.Connected)
+                        {
+                            await _hub.InvokeAsync("SendUserMessage", currentSessionId, userMsg.Id, userMessage);
+                        }
+
+                        var exists = await repo.MessageExistsAsync(userMsg.Id);
+                        if (!exists) 
+                        {
+                            await repo.UpdateSessionTimeAndAddMessageAsync(currentSessionId, DateTime.UtcNow, new ChatMessage(userMsg.Role, userMsg.Content, currentSessionId) { Id = userMsg.Id, CreatedAt = userMsg.CreatedAt });
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                   await Console.Out.WriteLineAsync($"Background persistence error (UserMsg): {ex.Message}");
+                }
+            });
+
+            if (_hub!.State == HubConnectionState.Connected)
+            {
+                await _hub.InvokeAsync(
+                    "AssistantTyping",
+                    SessionManager.ActiveSession!.Id,
+                    true);
+            }
+
+            _assistantTyping = true;
+            _isSending = false; // RELEASE THE LOCK EARLY
+            await InvokeAsync(StateHasChanged);
+
+            _cts = new CancellationTokenSource();
+            var currentToken = _cts.Token; // Capture local to this specific Send() invocation
+            string reply;
+            try
+            {
+                reply = await ChatService.GetReplyAsync(
+                    SessionManager.ActiveSession.Messages, currentToken);
+            }
+            catch (TaskCanceledException)
+            {
+                reply = "*(Generation stopped by user)*";
+            }
+            catch (Exception ex)
+            {
+                reply = $"**Error:** Unable to reach AI. Details: {ex.Message}";
+            }
+
+            // Only clear typing UI if it hasn't been cleared by signalR or cancellation
+            _assistantTyping = false;
+            if (_cts != null && _cts.Token == currentToken)
+            {
+                _cts.Dispose();
+                _cts = null;
+            }
+
+            if (_hub.State == HubConnectionState.Connected)
+            {
+                await _hub.InvokeAsync(
+                    "AssistantTyping",
+                    SessionManager.ActiveSession.Id,
+                    false);
+            }
+
+            var assistantMsgId = Guid.NewGuid();
+            SessionManager.AddMessageInMemory(ChatRole.Assistant, reply, assistantMsgId);
+            _scrollIntent = ScrollIntent.ForceScroll;
+            _shouldFocusChatInput = true;
+            await InvokeAsync(StateHasChanged);
+
+            _ = Task.Run(async () =>
+            {
+                try 
+                {
+                    using var scope = ScopeFactory.CreateScope();
+                    var repo = scope.ServiceProvider.GetRequiredService<IChatRepository>();
+
+                    if (_hub != null && _hub.State == HubConnectionState.Connected)
+                    {
+                        await _hub.InvokeAsync("SendAssistantMessage", currentSessionId, assistantMsgId, reply);
+                    }
+
+                    var exists = await repo.MessageExistsAsync(assistantMsgId);
+                    if (!exists) 
+                    {
+                        await repo.UpdateSessionTimeAndAddMessageAsync(currentSessionId, DateTime.UtcNow, new ChatMessage(ChatRole.Assistant, reply, currentSessionId) { Id = assistantMsgId });
+                    }
+                }
+                catch (Exception ex)
+                {
+                   await Console.Out.WriteLineAsync($"Background persistence error (AssistantMsg): {ex.Message}");
+                }
+            });
+
+            if (isNewSession)
+            {
+                Nav.NavigateTo(
+                    $"/chat/{SessionManager.ActiveSession.Id}",
+                    forceLoad: false);
+            }
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey)
+            await Send();
+    }
+
+    private async Task JumpToLatest()
+    {
+        _showJumpToLatest = false;
+        _scrollIntent = ScrollIntent.ForceScroll;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnMessagesScrolled()
+    {
+        var nearBottom = await JS.InvokeAsync<bool>(
+            "chatScroll.isNearBottom", _messagesRef);
+
+        if (!nearBottom)
+        {
+            _showJumpToLatest = true;
+        }
+        else
+        {
+            _showJumpToLatest = false;
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try { await JS.InvokeVoidAsync("chatScroll.initAutoResize", _chatInputRef); } catch { }
+        }
+
+        if (_shouldFocusChatInput && !_isSending && !IsReadOnly())
+        {
+            _shouldFocusChatInput = false;
+            try { await _chatInputRef.FocusAsync(); } catch { }
+        }
+
+        if (_scrollIntent == ScrollIntent.None)
+        {
+            try { await JS.InvokeVoidAsync("chatScroll.formatCodeBlocks"); } catch { }
+            return;
+        }
+
+        await Task.Yield();
+
+        if (_scrollIntent == ScrollIntent.ForceScroll)
+        {
+            await JS.InvokeVoidAsync("chatScroll.scrollToBottom", _messagesRef);
+            _showJumpToLatest = false;
+        }
+
+        try { await JS.InvokeVoidAsync("chatScroll.formatCodeBlocks"); } catch { }
+
+        _scrollIntent = ScrollIntent.None;
+    }
+
+    private async Task RegenerateLast()
+    {
+        var session = SessionManager.ActiveSession;
+        if (session == null) return;
+        var currentSessionId = session.Id;
+
+        // 1. Find last assistant message
+        var lastAssistant = session.Messages.LastOrDefault(m => m.Role == ChatRole.Assistant);
+        if (lastAssistant == null) return;
+
+        // 2. Remove it (memory)
+        session.Messages.Remove(lastAssistant);
+
+        // 3. Remove it (DB)
+        await SessionManager.DeleteMessageAsync(lastAssistant.Id);
+
+        await InvokeAsync(StateHasChanged);
+
+        // 4. Re-send conversation (same as Send(), minus user message)
+        _assistantTyping = true;
+        await InvokeAsync(StateHasChanged);
+
+        _cts = new CancellationTokenSource();
+        string reply;
+        try
+        {
+            reply = await ChatService.GetReplyAsync(session.Messages, _cts.Token);
+        }
+        catch (TaskCanceledException)
+        {
+            reply = "*(Generation stopped by user)*";
+        }
+        catch (Exception ex)
+        {
+            reply = $"**Error:** Unable to reach AI. Details: {ex.Message}";
+        }
+        finally
+        {
+            _cts.Dispose();
+            _cts = null;
+        }
+
+        _assistantTyping = false;
+
+        var assistantMsgId = Guid.NewGuid();
+        SessionManager.AddMessageInMemory(ChatRole.Assistant, reply, assistantMsgId);
+        _scrollIntent = ScrollIntent.ForceScroll;
+        _shouldFocusChatInput = true;
+        await InvokeAsync(StateHasChanged);
+
+        _ = Task.Run(async () =>
+        {
+            try 
+            {
+                using var scope = ScopeFactory.CreateScope();
+                var repo = scope.ServiceProvider.GetRequiredService<IChatRepository>();
+
+                if (_hub != null && _hub.State == HubConnectionState.Connected)
+                {
+                    await _hub.InvokeAsync("SendAssistantMessage", currentSessionId, assistantMsgId, reply);
+                }
+
+                var exists = await repo.MessageExistsAsync(assistantMsgId);
+                if (!exists) 
+                {
+                    await repo.UpdateSessionTimeAndAddMessageAsync(currentSessionId, DateTime.UtcNow, new ChatMessage(ChatRole.Assistant, reply, currentSessionId) { Id = assistantMsgId });
+                }
+            }
+            catch (Exception ex)
+            {
+                await Console.Out.WriteLineAsync($"Background persistence error (Regenerate): {ex.Message}");
+            }
+        });
+    }
+
+    private string ToHtml(string content)
+    {
+        if (string.IsNullOrWhiteSpace(content)) return "";
+        var pipeline = new MarkdownPipelineBuilder().Build();
+        return Markdown.ToHtml(content, pipeline);
+    }
+
+    private ChatMessage? GetLastAssistantMessage()
+    {
+        return SessionManager.ActiveSession?
+            .Messages
+            .LastOrDefault(m => m.Role == ChatRole.Assistant);
+    }
+
+    private void StopGeneration()
+    {
+        _cts?.Cancel();
+        _assistantTyping = false;
+        StateHasChanged();
+    }
+
+    private async Task CopyToClipboard(string text)
+    {
+        await JS.InvokeVoidAsync("chatScroll.copyText", text);
+        ToastService.ShowToast("Copied safely to clipboard", "success");
+    }
+
+
+    private enum ScrollIntent
+    {
+        None,
+        ForceScroll
+    }
+
+}

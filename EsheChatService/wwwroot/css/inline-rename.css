@@ -1,0 +1,14 @@
+﻿.inline-rename-input {
+    flex: 1;
+    background-color: #1e1f22;
+    border: 1px solid rgba(255,255,255,0.25);
+    border-radius: 4px;
+    padding: 4px 6px;
+    color: #ffffff;
+    font-size: 0.92rem;
+    outline: none;
+}
+
+    .inline-rename-input:focus {
+        border-color: #5865f2;
+    }

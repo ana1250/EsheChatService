@@ -1,0 +1,187 @@
+﻿    @using EsheChatService.Models
+    @using Microsoft.AspNetCore.Components.Web
+
+    <div class="chat-session-item has-menu @(IsActive ? "active" : "") @(IsEditing ? "editing" : "")"
+         tabindex="0"
+         @onkeydown="HandleKeyDown"
+         @onclick="HandleClick"
+         @ondblclick="HandleDoubleClick"
+    @ondblclick:stopPropagation>
+
+        @if (IsEditing)
+        {
+            <input class="inline-rename-input"
+                   @bind="_localText"
+                   @bind:event="oninput"
+                   @onkeydown="HandleKey"
+                   @onblur="Cancel"
+                   @ref="_inputRef"
+            @onclick:stopPropagation />
+        }
+        else
+        {
+            <span class="chat-title">@Session.Title</span>
+
+            @if (!IsCollapsed)
+            {
+                <button class="menu-btn"
+                        type="button"
+                        @onclick="OnToggleMenu"
+                @onclick:stopPropagation
+                @ondblclick:stopPropagation>
+                    ⋯
+                </button>
+
+            @if (IsMenuOpen)
+            {
+                <div class="options-menu" @onclick:stopPropagation>
+                    <button @onclick="HandleRename">Rename</button>
+                    <button @onclick="HandleMove">Move</button>
+					<button @onclick="HandleShare">Share</button>
+                    <button class="danger" @onclick="HandleDelete">Delete</button>
+                </div>
+            }
+
+            }
+        }
+    </div>
+
+
+
+
+    @code {
+        [Parameter] public ChatSession Session { get; set; } = default!;
+        [Parameter] public bool IsActive { get; set; }
+        [Parameter] public bool IsCollapsed { get; set; }
+        [Parameter] public bool IsEditing { get; set; }
+
+        [Parameter] public bool IsMenuOpen { get; set; }
+        [Parameter] public EventCallback OnToggleMenu { get; set; }
+        [Parameter] public EventCallback OnCloseMenu { get; set; }
+        [Parameter] public EventCallback OnMove { get; set; }
+
+        [Parameter] public EventCallback<string> OnCommitRename { get; set; }
+        [Parameter] public EventCallback OnCancel { get; set; }
+        [Parameter] public EventCallback OnSelect { get; set; }
+        [Parameter] public EventCallback OnRename { get; set; }
+        [Parameter] public EventCallback OnDelete { get; set; }
+	    [Parameter] public EventCallback<string> OnShare { get; set; }
+
+        private string _localText = "";
+        private bool _wasEditing;
+        private bool _suppressClick;
+        private bool _cancelHandled;
+        private ElementReference _inputRef;
+        private bool _shouldFocus;
+
+        protected override void OnParametersSet()
+        {
+            if (IsEditing && !_wasEditing)
+            {
+                _localText = Session.Title;
+                _cancelHandled = false;
+                _shouldFocus = true;
+            }
+
+            if (!IsEditing)
+            {
+                _localText = "";
+            }
+
+            _wasEditing = IsEditing;
+        }
+
+        async Task HandleMove()
+        {
+            IsMenuOpen = false;
+            await OnMove.InvokeAsync();
+        }
+
+        async Task HandleClick()
+        {
+            if (_suppressClick)
+            {
+                _suppressClick = false;
+                return;
+            }
+
+            if (IsEditing || IsMenuOpen)
+                return;
+
+            await OnSelect.InvokeAsync();
+        }
+
+
+        async Task HandleDoubleClick()
+        {
+            _suppressClick = true;
+            await OnRename.InvokeAsync();
+        }
+
+        async Task HandleKey(KeyboardEventArgs e)
+        {
+            if (e.Key == "Enter")
+            {
+                _cancelHandled = true;
+                await OnCommitRename.InvokeAsync(_localText);
+            }
+            else if (e.Key == "Escape")
+            {
+                _cancelHandled = true;
+                await OnCancel.InvokeAsync();
+            }
+        }
+
+        async Task Cancel()
+        {
+            if (_cancelHandled) return;
+            _cancelHandled = true;
+            await OnCancel.InvokeAsync();
+        }
+
+        async Task HandleRename()
+        {
+            await OnCloseMenu.InvokeAsync();
+            await OnRename.InvokeAsync();
+        }
+
+        async Task HandleShare()
+        {
+            await OnCloseMenu.InvokeAsync();
+            await OnShare.InvokeAsync();
+        }
+
+        async Task HandleDelete()
+        {
+            await OnCloseMenu.InvokeAsync();
+            await OnDelete.InvokeAsync();
+        }
+
+        protected override async Task OnAfterRenderAsync(bool firstRender)
+        {
+            if (_shouldFocus)
+            {
+                _shouldFocus = false;
+                await _inputRef.FocusAsync();
+            }
+        }
+
+        async Task HandleKeyDown(KeyboardEventArgs e)
+        {
+            if (e.Key == "Escape")
+            {
+                if (IsEditing)
+                {
+                    _cancelHandled = true;
+                    await OnCancel.InvokeAsync();
+                }
+                else if (IsMenuOpen)
+                {
+                    IsMenuOpen = false;
+                    StateHasChanged();
+                }
+            }
+        }
+
+    }
+

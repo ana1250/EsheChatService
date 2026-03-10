@@ -1,0 +1,62 @@
+﻿/* =============================
+   Chat Session Row
+============================= */
+
+.chat-session-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    color: #dbdee1;
+    font-size: 0.95rem;
+    cursor: pointer;
+    position: relative;
+    min-width: 0;
+}
+
+    /* Hover */
+    .chat-session-item:hover {
+        background-color: rgba(79, 84, 92, 0.35);
+    }
+
+    /* Active session */
+    .chat-session-item.active {
+        background-color: rgba(88, 101, 242, 0.25);
+        color: #ffffff;
+    }
+
+    /* Editing state */
+    .chat-session-item.editing {
+        background-color: rgba(88, 101, 242, 0.15);
+        cursor: default;
+    }
+
+    .chat-session-item .menu-btn {
+        opacity: 0;
+        transition: opacity 0.15s ease;
+    }
+
+.sidebar.collapsed .chat-session-item {
+    display: none !important;
+    pointer-events: none;
+}
+
+/* =============================
+   Chat title
+============================= */
+
+.chat-title {
+    flex: 1;
+    font-weight: 500;
+    color: #f2f3f5;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    user-select: none;
+    min-width: 0;
+}
+.sidebar.collapsed .chat-title {
+    display: none;
+    pointer-events: none;
+}

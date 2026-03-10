@@ -1,0 +1,74 @@
+﻿.menu-btn {
+    all: unset;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    width: auto !important;
+    height: auto !important;
+    padding: 0 6px !important;
+    font-size: 1.2rem;
+    line-height: 1;
+    color: #b5bac1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.options-menu {
+    position: absolute;
+    right: 8px;
+    top: 100%;
+    background: #1e1f22;
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+    padding: 4px 0;
+    min-width: 140px;
+    z-index: 100;
+    display: block;
+    overflow: hidden;
+}
+
+    .options-menu button {
+        all: unset;
+        width: 100%;
+        padding: 6px 12px;
+        font-size: 0.85rem;
+        color: #dbdee1;
+        cursor: pointer;
+        text-align: left;
+    }
+
+        .options-menu button:hover {
+            background: rgba(88, 101, 242, 0.2);
+        }
+
+        .options-menu button.danger:hover {
+            background: rgba(237, 66, 69, 0.25);
+            color: #ed4245;
+        }
+
+.has-menu:hover .menu-btn {
+    opacity: 1;
+}
+
+.menu-btn:hover {
+    color: #ffffff;
+}
+
+.options-menu button + button {
+    margin-top: 2px;
+}
+
+.menu-btn:focus,
+.menu-btn:focus-visible,
+.menu-btn:active {
+    outline: none !important;
+    box-shadow: none !important;
+    background: transparent !important;
+}
+
+.sidebar.collapsed .menu-btn {
+    visibility: hidden;
+}
+

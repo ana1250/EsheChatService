@@ -1,0 +1,27 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# IDE
+.vs/
+.vscode/
+*.swp
+
+# Secrets (use user-secrets in production)
+# appsettings.json contains placeholder config structure, not real secrets
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Build artifacts
+build_errors.txt
+
+# Gemini
+.gemini/
+.agents/

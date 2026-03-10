@@ -1,0 +1,819 @@
+@using EsheChatService.Services
+@using EsheChatService.Models
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Web
+@using System.Security.Claims;
+
+@inject ChatSessionManager SessionManager
+@inject ToastService ToastService
+@inject NavigationManager Nav
+
+@implements IDisposable
+
+<div class="top-row ps-3">
+    @if (!IsCollapsed)
+    {
+        <div class="navbar-brand" @onclick="GoToNewChat">
+            EsheChatService
+        </div>
+    }
+    <button class="sidebar-toggler" @onclick="ToggleSidebar"></button>
+</div>
+
+@if (!IsCollapsed)
+{
+    <div class="nav-item px-3 mb-2">
+        <input placeholder="Search chats…"
+        class="form-control form-control-sm"
+        @bind="_searchText"
+        @bind:event="oninput" />
+    </div>
+}
+
+<div class="nav-scrollable" @onclick="CloseMenus">
+    <nav class="flex-column">
+
+        <div class="nav-item px-3">
+            <button class="nav-link" @onclick="GoToNewChat">
+                @(IsCollapsed ? "+" : "New Chat")
+            </button>
+        </div>
+
+        @foreach (var folder in SessionManager.Folders.OrderBy(f => f.Order))
+        {
+            var sessions = Filtered.Where(s => s.FolderId == folder.Id).ToList();
+
+            <div class="chat-folder">
+                <div class="chat-folder-header-row has-menu"
+                tabindex="0"
+                @onkeydown="e => HandleFolderKeyDown(e, folder.Id)"
+                @onclick="() => ToggleFolder(folder.Id)">
+
+                    <span class="chevron">
+                        @((folder.IsExpanded || IsSearching) ? "▾" : "▸")
+                    </span>
+
+                    @if (_editingFolderId == folder.Id)
+                    {
+                        <input class="inline-rename-input"
+                        @bind="_folderRenameText"
+                        @bind:event="oninput"
+                        @onkeydown="e => HandleFolderKey(e, folder.Id)"
+                        @onblur="CancelFolderRename"
+                        @onclick:stopPropagation
+                        @ref="_folderInputRef" />
+                    }
+                    else
+                    {
+                        <span class="folder-name">@folder.Name</span>
+
+                        <button class="menu-btn"
+                        type="button"
+                        @onclick="() => ToggleFolderMenu(folder.Id)"
+                        @onclick:stopPropagation>
+                            ⋯
+                        </button>
+                    }
+
+                    @if (_openFolderMenuId == folder.Id)
+                    {
+                        <div class="options-menu" @onclick:stopPropagation>
+                            <button @onclick="() => StartFolderRename(folder.Id)">
+                                Rename
+                            </button>
+                            <button class="danger"
+                            @onclick="() => OpenDeleteFolderModal(folder.Id)">
+                                Delete
+                            </button>
+                        </div>
+                    }
+                </div>
+
+
+
+
+                @if (folder.IsExpanded || IsSearching)
+                {
+                    @if (sessions.Count == 0)
+                    {
+                        <div class="empty-folder-placeholder" style="padding: 4px 16px; font-size: 0.85rem; color: #80848e; font-style: italic; margin-left: 12px;">
+                            Empty folder
+                        </div>
+                    }
+                    @foreach (var session in sessions)
+                    {
+                        <ChatSessionRow Session="session"
+                        IsActive="session == SessionManager.ActiveSession"
+                        IsCollapsed="IsCollapsed"
+                        IsEditing="_editingSessionId == session.Id"
+                        IsMenuOpen="_openSessionMenuId == session.Id"
+                        OnToggleMenu="() => ToggleSessionMenu(session.Id)"
+                        OnCloseMenu="CloseMenus"
+                        OnSelect="() => SelectSession(session.Id)"
+                        OnRename="() => StartRename(session.Id)"
+                        OnCommitRename="text => CommitRename(session.Id, text)"
+                        OnShare="email => OpenShareModal(session.Id, email)"
+                        OnCancel="CancelRename"
+                        OnMove="() => OpenMoveModal(session.Id)"
+                        OnDelete="() => OpenDeleteModal(session.Id)" />
+
+
+                    }
+                }
+            </div>
+        }
+
+        @if (Ungrouped.Any())
+        {
+            <div class="chat-folder">
+                <div class="chat-folder-header-row muted">Ungrouped</div>
+
+                @foreach (var session in Ungrouped)
+                {
+                    <ChatSessionRow Session="session"
+                    IsActive="session == SessionManager.ActiveSession"
+                    IsCollapsed="IsCollapsed"
+                    IsEditing="_editingSessionId == session.Id"
+                    IsMenuOpen="_openSessionMenuId == session.Id"
+                    OnToggleMenu="() => ToggleSessionMenu(session.Id)"
+                    OnCloseMenu="CloseMenus"
+                    OnSelect="() => SelectSession(session.Id)"
+                    OnRename="() => StartRename(session.Id)"
+                    OnCommitRename="text => CommitRename(session.Id, text)"
+                    OnCancel="CancelRename"
+                    OnShare="email => OpenShareModal(session.Id, email)"
+                    OnMove="() => OpenMoveModal(session.Id)"
+                    OnDelete="() => OpenDeleteModal(session.Id)" />
+
+
+                }
+            </div>
+        }
+
+        @if (SharedWithMe.Any())
+        {
+            <div class="chat-folder">
+                <div class="chat-folder-header-row muted">
+                    Shared with you
+                </div>
+
+                @foreach (var session in SharedWithMe)
+                {
+                    <ChatSessionRow Session="session"
+                    IsActive="session == SessionManager.ActiveSession"
+                    IsCollapsed="IsCollapsed"
+                    IsEditing="false"
+                    IsMenuOpen="false"
+                    OnSelect="() => SelectSession(session.Id)" />
+                }
+            </div>
+        }
+
+    </nav>
+</div>
+
+<div class="sidebar-footer has-menu">
+    @if (IsAuthenticated)
+    {
+        <button class="auth-btn menu-btn"
+        @onclick="ToggleUserMenu"
+        @onclick:stopPropagation>
+            <div class="avatar">@UserInitials</div>
+
+            @if (!IsCollapsed)
+            {
+                <span class="email">@MaskedEmail</span>
+            }
+        </button>
+
+        @if (_showUserMenu)
+        {
+            <div class="options-menu" @onclick:stopPropagation>
+                <button @onclick="OpenProfile">Profile</button>
+                <button class="danger" @onclick="Logout">Log out</button>
+            </div>
+        }
+    }
+    else
+    {
+        <button class="auth-btn" @onclick="Login">
+            <div class="avatar">?</div>
+            @if (!IsCollapsed)
+            {
+                <span class="email">Sign in</span>
+            }
+        </button>
+    }
+</div>
+
+
+
+
+@if (_showDeleteModal)
+{
+    <div class="app-modal-backdrop" @onclick="CloseDeleteModal"></div>
+    <div class="app-modal" tabindex="0">
+        <h5>Delete chat?</h5>
+        <p>This action cannot be undone.</p>
+        <div class="app-modal-actions">
+            <button class="btn btn-danger" @onclick="ConfirmDelete">Delete</button>
+            <button class="btn btn-secondary" @onclick="CloseDeleteModal">Cancel</button>
+        </div>
+    </div>
+}
+
+@if (_showDeleteFolderModal)
+{
+    <div class="app-modal-backdrop" @onclick="CloseDeleteFolderModal"></div>
+
+    <div class="app-modal" tabindex="0">
+        <h5>Delete folder?</h5>
+
+        <p>What should happen to chats in this folder?</p>
+
+        <div class="delete-folder-options">
+            <label class="delete-folder-option">
+                <input type="radio"
+                name="delete-folder-option"
+                checked="@(!_deleteFolderSessions)"
+                @onclick="() => _deleteFolderSessions = false" />
+                <span>Move chats to Ungrouped</span>
+            </label>
+
+            <label class="delete-folder-option danger">
+                <input type="radio"
+                name="delete-folder-option"
+                checked="@(_deleteFolderSessions)"
+                @onclick="() => _deleteFolderSessions = true" />
+                <span>Delete all chats in this folder</span>
+            </label>
+        </div>
+
+        <div class="app-modal-actions">
+            <button class="btn btn-danger" @onclick="ConfirmDeleteFolder">
+                Delete
+            </button>
+            <button class="btn btn-secondary" @onclick="CloseDeleteFolderModal">
+                Cancel
+            </button>
+        </div>
+    </div>
+}
+
+
+@if (_showMoveModal)
+{
+    <div class="app-modal-backdrop" @onclick="CloseMoveModal"></div>
+
+    <div class="app-modal" tabindex="0">
+        <h5>Move chat</h5>
+
+        <!-- Folder list -->
+        <div class="move-folder-list">
+
+            @{ var sessionToMove = SessionManager.Sessions.FirstOrDefault(s => s.Id == _moveSessionId); }
+
+            <!-- Ungrouped -->
+            @if (sessionToMove?.FolderId != null)
+            {
+                <label class="move-folder-item">
+                    <input type="radio"
+                    name="move-folder"
+                    checked="@(_selectedFolderId == null)"
+                    @onclick="() => _selectedFolderId = null" />
+                    <span>Ungrouped</span>
+                </label>
+            }
+
+            @foreach (var folder in SessionManager.Folders.Where(f => sessionToMove == null || f.Id != sessionToMove.FolderId).OrderBy(f => f.Name))
+            {
+                <label class="move-folder-item">
+                    <input type="radio"
+                    name="move-folder"
+                    checked="@(_selectedFolderId == folder.Id)"
+                    @onclick="() => _selectedFolderId = folder.Id" />
+                    <span>@folder.Name</span>
+                </label>
+            }
+        </div>
+
+        <hr />
+
+        <!-- Create new folder -->
+        @if (_isCreatingFolder)
+        {
+            <input class="inline-rename-input"
+            placeholder="New folder name"
+            @bind="_newFolderName"
+            @bind:event="oninput"
+            @ref="_newFolderInputRef" />
+        }
+        else
+        {
+            <button class="btn-link-create"
+            @onclick="() => _isCreatingFolder = true">
+                + New folder
+            </button>
+        }
+
+        <div class="app-modal-actions">
+            <button @onclick="ConfirmMove">
+                Move
+            </button>
+            <button class="secondary" @onclick="CloseMoveModal">
+                Cancel
+            </button>
+        </div>
+    </div>
+}
+@if (_showProfileModal)
+{
+    <div class="app-modal-backdrop" @onclick="CloseProfile"></div>
+
+    <div class="app-modal">
+        <h5>Profile</h5>
+
+        <div class="profile-row">
+            <strong>Email</strong>
+            <span>@UserEmail</span>
+        </div>
+
+        <div class="profile-row">
+            <strong>Provider</strong>
+            <span>Google</span>
+        </div>
+
+        <div class="profile-row muted">
+            <span>More settings coming later</span>
+        </div>
+
+        <div class="app-modal-actions">
+            <button class="secondary" @onclick="CloseProfile">
+                Close
+            </button>
+        </div>
+    </div>
+}
+
+@if (_showShareModal)
+{
+    <div class="app-modal-backdrop" @onclick="CloseShareModal"></div>
+
+    <div class="app-modal" tabindex="0">
+        <h5>Share chat</h5>
+
+        <p class="muted">
+            Invite someone by email. They’ll see this chat in “Shared with you”.
+        </p>
+
+        <!-- Email input -->
+        <input class="inline-rename-input"
+        placeholder="Enter email address"
+        @bind="_shareEmail"
+        @bind:event="oninput" />
+
+        <!-- Current shared users -->
+        @if (SessionManager.SharedByMe.Any())
+        {
+            <div class="share-list">
+                @foreach (var user in SessionManager.SharedByMe)
+                {
+
+                    <div class="share-row">
+                        <span class="email">@user.SharedWithEmail</span>
+
+                        <button class="menu-btn danger"
+                        title="Remove access"
+
+                        @onclick="() => RemoveShare(user.ChatSessionId)">
+                            ✕
+                        </button>
+                    </div>
+                }
+            </div>
+        }
+
+        <div class="app-modal-actions">
+            <button @onclick="ConfirmShare">
+                Share
+            </button>
+            <button class="secondary" @onclick="CloseShareModal">
+                Cancel
+            </button>
+        </div>
+    </div>
+}
+
+
+
+
+@code {
+    [Parameter] public bool IsCollapsed { get; set; }
+    [Parameter] public EventCallback<bool> IsCollapsedChanged { get; set; }
+
+    private Guid? _openSessionMenuId;
+
+    private Guid? _editingSessionId;
+    private Guid? _deleteSessionId;
+    private bool _showDeleteModal;
+    private string _searchText = "";
+
+    private Guid? _editingFolderId;
+    private Guid? _openFolderMenuId;
+    private string _folderRenameText = "";
+    private ElementReference _folderInputRef;
+    private bool _shouldFocusFolder;
+    private Guid? _deleteFolderId;
+    private bool _showDeleteFolderModal;
+    private bool _deleteFolderSessions;
+
+    private bool _showMoveModal;
+    private Guid? _moveSessionId;
+    private Guid? _selectedFolderId;
+    private bool _isCreatingFolder;
+    private string _newFolderName = "";
+    private ElementReference _newFolderInputRef;
+    private bool _shouldFocusNewFolder;
+
+    [Inject] AuthenticationStateProvider AuthStateProvider { get; set; } = default!;
+    private bool _showUserMenu;
+    private bool _showProfileModal;
+    string UserEmail = "";
+
+    private bool IsAuthenticated;
+    private string UserInitials = "?";
+    private string MaskedEmail = "";
+
+    private string _shareEmail = "";
+    private bool _showShareModal;
+    private Guid? _shareSessionId;
+
+    private bool IsSearching => !string.IsNullOrWhiteSpace(_searchText);
+
+    private IReadOnlyList<ChatSession> Filtered =>
+        IsSearching
+            ? SessionManager.Sessions
+                .Where(s => s.Title.Contains(_searchText, StringComparison.OrdinalIgnoreCase))
+                .ToList()
+            : SessionManager.Sessions;
+
+    private IReadOnlyList<ChatSession> Ungrouped =>
+        Filtered.Where(s => s.FolderId == null).ToList();
+
+    private IReadOnlyList<ChatSession> SharedWithMe =>
+		SessionManager.SharedWithMe;
+
+    protected override async Task OnInitializedAsync()
+    {
+        SessionManager.OnChange += StateHasChanged;
+        await SessionManager.LoadAsync();
+
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        IsAuthenticated = user.Identity?.IsAuthenticated == true;
+
+        if (IsAuthenticated)
+        {
+            var email = user.FindFirst(ClaimTypes.Email)?.Value ?? "";
+
+            UserEmail = email;
+            MaskedEmail = MaskEmail(email);
+            UserInitials = GetInitials(email);
+        }
+    }
+
+    public void Dispose() => SessionManager.OnChange -= StateHasChanged;
+
+    void GoToNewChat()
+    {
+        _searchText = "";
+        SessionManager.ClearActive();
+        Nav.NavigateTo("/chat");
+    }
+
+    void SelectSession(Guid id)
+    {
+        CancelRename();
+        Nav.NavigateTo($"/chat/{id}");
+    }
+
+    void StartRename(Guid id)
+    {
+        _editingSessionId = id;
+    }
+
+    void CancelRename()
+    {
+        _editingSessionId = null;
+    }
+
+    async Task CommitRename(Guid id, string text)
+    {
+        _editingSessionId = null;
+        await SessionManager.RenameSessionAsync(id, text);
+        ToastService.ShowToast("Chat renamed", "success");
+    }
+
+
+    void OpenDeleteModal(Guid id)
+    {
+        _deleteSessionId = id;
+        _showDeleteModal = true;
+    }
+
+    async Task ConfirmDelete()
+    {
+        var idToDelete = _deleteSessionId;
+        CloseDeleteModal();
+
+        if (idToDelete.HasValue)
+        {
+            await SessionManager.DeleteSessionAsync(idToDelete.Value);
+            ToastService.ShowToast("Chat deleted");
+        }
+    }
+
+    void CloseDeleteModal()
+    {
+        _deleteSessionId = null;
+        _showDeleteModal = false;
+    }
+
+    void CloseMenus()
+    {
+        CancelRename();
+        _showUserMenu = false;
+        _openFolderMenuId = null;
+        _openSessionMenuId = null;
+    }
+    void CloseProfile()
+    {
+        _showProfileModal = false;
+    }
+
+
+    void ToggleSessionMenu(Guid id)
+    {
+        _openFolderMenuId = null;
+        _openSessionMenuId = _openSessionMenuId == id ? null : id;
+    }
+
+    async Task ToggleSidebar()
+        => await IsCollapsedChanged.InvokeAsync(!IsCollapsed);
+
+    bool IsFolderEditing(Guid id) => _editingFolderId == id;
+
+    void ToggleFolder(Guid id)
+    {
+        if (_editingFolderId == id) return;
+        SessionManager.ToggleFolder(id);
+    }
+
+    void StartFolderRename(ChatFolder folder)
+    {
+        _openFolderMenuId = null;
+        _editingFolderId = folder.Id;
+        _folderRenameText = folder.Name;
+        _shouldFocusFolder = true;
+    }
+
+    async Task HandleFolderKey(KeyboardEventArgs e, Guid id)
+    {
+        if (e.Key == "Enter")
+        {
+            var text = _folderRenameText;
+            CancelFolderRename();
+            await SessionManager.RenameFolderAsync(id, text);
+            ToastService.ShowToast("Folder renamed", "success");
+        }
+        else if (e.Key == "Escape")
+        {
+            CancelFolderRename();
+        }
+    }
+
+    void CancelFolderRename()
+    {
+        _editingFolderId = null;
+        _folderRenameText = "";
+    }
+
+    void OpenDeleteFolderModal(Guid id)
+    {
+        _deleteFolderId = id;
+        _showDeleteFolderModal = true;
+    }
+
+    async Task ConfirmDeleteFolder()
+    {
+        var idToDelete = _deleteFolderId;
+        var deleteSessions = _deleteFolderSessions;
+        
+        if (!idToDelete.HasValue)
+            return;
+
+        CloseDeleteFolderModal();
+
+        if (deleteSessions)
+        {
+            await SessionManager.DeleteFolderAndSessionsAsync(idToDelete.Value);
+            ToastService.ShowToast("Folder and chats deleted");
+        }
+        else
+        {
+            await SessionManager.DeleteFolderAsync(idToDelete.Value);
+            ToastService.ShowToast("Folder deleted");
+        }
+    }
+
+
+    void CloseDeleteFolderModal()
+    {
+        _deleteFolderId = null;
+        _showDeleteFolderModal = false;
+        _deleteFolderSessions = false;
+    }
+
+    void ToggleFolderMenu(Guid id)
+    {
+        _openSessionMenuId = null;
+        _showUserMenu = false;
+        _openFolderMenuId = _openFolderMenuId == id ? null : id;
+    }
+
+    void StartFolderRename(Guid id)
+    {
+        _openFolderMenuId = null;
+        _editingFolderId = id;
+    }
+
+    void HandleFolderKeyDown(KeyboardEventArgs e, Guid folderId)
+    {
+        if (e.Key == "Escape")
+        {
+            if (_editingFolderId == folderId)
+            {
+                CancelFolderRename();
+            }
+            else if (_openFolderMenuId == folderId)
+            {
+                _openFolderMenuId = null;
+            }
+        }
+    }
+
+    void OpenMoveModal(Guid sessionId)
+    {
+        CloseMenus();
+        _moveSessionId = sessionId;
+
+        var session = SessionManager.Sessions.FirstOrDefault(s => s.Id == sessionId);
+        if (session != null)
+        {
+            if (session.FolderId == null)
+                _selectedFolderId = SessionManager.Folders.OrderBy(f => f.Name).FirstOrDefault()?.Id;
+            else
+                _selectedFolderId = null;
+        }
+        else
+        {
+            _selectedFolderId = null;
+        }
+
+        _isCreatingFolder = false;
+        _newFolderName = "";
+        _showMoveModal = true;
+    }
+
+    async Task ConfirmMove()
+    {
+        if (!_moveSessionId.HasValue)
+            return;
+
+        Guid sessionId = _moveSessionId.Value;
+        Guid? targetFolderId = _selectedFolderId;
+        bool isCreating = _isCreatingFolder;
+        string newName = _newFolderName;
+
+        if (isCreating && string.IsNullOrWhiteSpace(newName))
+            return;
+
+        CloseMoveModal();
+
+        if (isCreating)
+        {
+            var newFolder = await SessionManager.CreateFolderAsync(newName);
+            targetFolderId = newFolder.Id;
+            ToastService.ShowToast($"Folder '{newName}' created", "success");
+        }
+
+        await SessionManager.MoveSessionToFolderAsync(
+            sessionId,
+            targetFolderId
+        );
+        ToastService.ShowToast("Chat moved", "success");
+    }
+
+    void CloseMoveModal()
+    {
+        _moveSessionId = null;
+        _showMoveModal = false;
+        _isCreatingFolder = false;
+        _newFolderName = "";
+        _selectedFolderId = null;
+        _shouldFocusNewFolder = false;
+    }
+
+     void StartCreateFolder()
+    {
+        _isCreatingFolder = true;
+        _shouldFocusNewFolder = true;
+    }
+
+
+    void ToggleUserMenu()
+    {
+        _openFolderMenuId = null;
+        _showUserMenu = !_showUserMenu;
+    }
+
+    void OpenProfile()
+    {
+        _showUserMenu = false;
+        _showProfileModal = true;
+    }
+
+    void Logout()
+    {
+        _showUserMenu = false;
+        Nav.NavigateTo("/logout", forceLoad: true);
+    }
+
+    string GetInitials(string email)
+    => string.IsNullOrWhiteSpace(email)
+        ? "?"
+        : email[..Math.Min(2, email.Length)].ToUpper();
+
+    string MaskEmail(string email)
+    {
+        var at = email.IndexOf('@');
+        if (at <= 2) return email;
+        return email[..2] + "****" + email[at..];
+    }
+
+    void Login() => Nav.NavigateTo("/login", forceLoad: true);
+
+    async Task OpenShareModal(Guid sessionId, string email)
+    {
+        _shareSessionId = sessionId;
+        _shareEmail = email;
+        await SessionManager.GetSharedSessionbyIdAsync(sessionId);
+        _showShareModal = true;
+    }
+
+    void CloseShareModal()
+    {
+        _showShareModal = false;
+		_shareSessionId = null;
+        _shareEmail = "";
+    }
+
+    async Task ConfirmShare()
+    {
+        var sessionId = _shareSessionId;
+        var email = _shareEmail?.Trim();
+
+        CloseShareModal();
+
+        if (sessionId.HasValue && !string.IsNullOrWhiteSpace(email))
+        {
+            await SessionManager.ShareSessionAsync(sessionId.Value, email);
+            ToastService.ShowToast($"Chat shared with {email}", "success");
+        }
+    }
+
+
+    async Task RemoveShare(Guid sharedSessionId)
+    {
+		if (sharedSessionId == Guid.Empty)
+			return;
+		await SessionManager.RemoveShareAsync(sharedSessionId);
+        ToastService.ShowToast("Access removed");
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_shouldFocusFolder && _editingFolderId.HasValue)
+        {
+            _shouldFocusFolder = false;
+            try { await _folderInputRef.FocusAsync(); } catch { }
+        }
+
+        if (_shouldFocusNewFolder && _isCreatingFolder)
+        {
+            _shouldFocusNewFolder = false;
+            try { await _newFolderInputRef.FocusAsync(); } catch { }
+        }
+    }
+}

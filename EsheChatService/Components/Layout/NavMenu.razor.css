@@ -1,0 +1,457 @@
+/* -----------------------------
+   Sidebar Header / Collapse
+------------------------------*/
+
+.sidebar.collapsed .top-row .sidebar-toggler {
+    justify-content: center;
+    padding: 0;
+}
+
+/* -----------------------------
+   Top Bar
+------------------------------*/
+
+.top-row {
+    height: 3.5rem;
+    background-color: #2b2d31;
+    display: flex;
+    align-items: center;
+    padding: 0 1rem;
+    justify-content: space-between;
+    flex-shrink: 0;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+
+/* Brand */
+.navbar-brand {
+    font-size: 1rem;
+    font-weight: 500;
+    color: #ffffff;
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+/* -----------------------------
+   sidebar Toggler
+------------------------------*/
+
+.sidebar-toggler {
+    appearance: none;
+    cursor: pointer;
+    width: 2.2rem;
+    height: 2.2rem;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba%28255, 255, 255, 0.6%29' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e") no-repeat center / 1.3rem;
+    border-radius: 4px;
+    background-color: rgba(255,255,255,0.08);
+    transition: transform 0.25s ease, background-color 0.2s ease;
+}
+
+    .sidebar-toggler:hover {
+        background-color: rgba(255,255,255,0.15);
+    }
+
+.sidebar.collapsed .sidebar-toggler {
+    transform: rotate(180deg);
+}
+
+/* -----------------------------
+   Navigation Container
+------------------------------*/
+
+.nav-scrollable {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+    .nav-scrollable::-webkit-scrollbar {
+        width: 6px;
+    }
+
+    .nav-scrollable::-webkit-scrollbar-thumb {
+        background-color: rgba(255,255,255,0.2);
+        border-radius: 10px;
+    }
+
+/* -----------------------------
+   Search / Nav Items
+------------------------------*/
+
+.nav-item {
+    font-size: 0.9rem;
+    padding: 0.25rem 0.5rem;
+}
+
+    .nav-link,
+    .nav-item button:not(.menu-btn) {
+        color: #dbdee1;
+        background: none;
+        border: none;
+        border-radius: 4px;
+        height: 2.6rem;
+        display: flex;
+        align-items: center;
+        width: 100%;
+        cursor: pointer;
+        padding: 0 0.75rem;
+        text-align: left;
+    }
+
+        .nav-link:hover,
+        .nav-item button:not(.menu-btn):hover {
+            background-color: rgba(79, 84, 92, 0.32);
+            color: #ffffff;
+        }
+
+    /* Search input */
+    .nav-item input {
+        background-color: #1e1f22;
+        border: none;
+        color: #dbdee1;
+        border-radius: 4px;
+        padding: 0.4rem 0.6rem;
+        font-size: 0.85rem;
+    }
+
+        .nav-item input::placeholder {
+            color: #949ba4;
+        }
+
+/* -----------------------------
+   Modals
+------------------------------*/
+
+.app-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.65);
+    z-index: 9998;
+}
+
+.app-modal {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0.98);
+    background-color: #2b2d31;
+    padding: 1rem;
+    border-radius: 8px;
+    width: 320px;
+    max-width: 90vw;
+    z-index: 9999;
+    color: #dbdee1;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+    animation: modal-pop 0.18s ease-out forwards;
+}
+
+    .app-modal h5 {
+        margin: 0 0 0.5rem 0;
+        font-size: 1.05rem;
+        font-weight: 600;
+        color: #ffffff;
+    }
+
+    .app-modal p {
+        margin: 0 0 0.75rem 0;
+        font-size: 0.9rem;
+        color: #b5bac1;
+    }
+
+
+
+.app-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+}
+
+    .app-modal-actions button {
+        background: #5865f2;
+        border: none;
+        color: white;
+        padding: 0.35rem 0.75rem;
+        border-radius: 4px;
+        font-size: 0.85rem;
+        font-weight: 500;
+        cursor: pointer;
+    }
+
+        .app-modal-actions button.secondary {
+            background: transparent;
+            color: #b5bac1;
+        }
+
+            .app-modal-actions   button.secondary:hover {
+                color: #ffffff;
+            }
+
+@keyframes modal-pop {
+    from {
+        opacity: 0;
+        transform: translate(-50%, -48%) scale(0.96);
+    }
+
+    to {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+    }
+}
+
+/* -----------------------------
+   Chat Folders
+------------------------------*/
+
+.chat-folder {
+    margin-top: 0.25rem;
+}
+
+/* Folder header row */
+.chat-folder-header-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    color: #b5bac1;
+    cursor: pointer;
+    user-select: none;
+    position: relative;
+    min-width: 0;
+}
+
+
+    /* Hover */
+    .chat-folder-header-row:hover {
+        background-color: rgba(79, 84, 92, 0.25);
+        color: #ffffff;
+    }
+
+    /* Chevron */
+    .chat-folder-header-row .chevron {
+        width: 1rem;
+        text-align: center;
+        opacity: 0.8;
+    }
+
+    /* Folder name */
+    .chat-folder-header-row .folder-name {
+        flex: 1;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+    }
+
+    .chat-folder-header-row .menu-btn {
+        margin-left: auto;
+        align-self: center;
+        opacity: 0;
+        transition: opacity 0.15s ease;
+    }
+
+    /* Muted (Ungrouped) */
+    .chat-folder-header-row.muted {
+        cursor: default;
+        color: #b5bac1;
+    }
+
+        .chat-folder-header-row.muted:hover {
+            background: none;
+        }
+
+.sidebar.collapsed .chat-folder-header-row {
+    display: none;
+}
+
+/* -----------------------------
+   Move Chat Modal
+------------------------------*/
+
+.move-folder-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-bottom: 0.5rem;
+    max-height: 180px;
+    overflow-y: auto;
+}
+
+.move-folder-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    color: #dbdee1;
+}
+
+    .move-folder-item:hover {
+        background-color: rgba(79, 84, 92, 0.25);
+    }
+
+    .move-folder-item input {
+        accent-color: #5865f2;
+        cursor: pointer;
+    }
+
+/* Create folder link */
+.btn-link-create {
+    background: none;
+    border: none;
+    color: #949ba4;
+    font-size: 0.85rem;
+    cursor: pointer;
+    padding: 4px 0;
+}
+
+    .btn-link-create:hover {
+        color: #ffffff;
+    }
+
+.delete-folder-options {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 0.75rem 0;
+}
+
+.delete-folder-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    color: #dbdee1;
+}
+
+    .delete-folder-option:hover {
+        background-color: rgba(79, 84, 92, 0.25);
+    }
+
+    .delete-folder-option.danger {
+        color: #f28b82;
+    }
+
+    .delete-folder-option input {
+        accent-color: #5865f2;
+    }
+
+/* -----------------------------
+   Sidebar Footer (Auth)
+------------------------------*/
+
+.sidebar-footer {
+    padding: 0.5rem;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    flex-shrink: 0;
+}
+
+.auth-btn {
+    width: 100%;
+    background: none;
+    border: none;
+    color: #dbdee1;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.5rem;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+    .auth-btn:hover {
+        background: rgba(79, 84, 92, 0.32);
+        color: #ffffff;
+    }
+
+.avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: #5865f2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: white;
+}
+
+.email {
+    font-size: 0.85rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* -----------------------------
+   Profile Modal
+------------------------------*/
+
+.profile-row {
+    display: flex;
+    justify-content: space-between;
+    margin: 0.5rem 0;
+    font-size: 0.9rem;
+}
+
+    .profile-row.muted {
+        color: #949ba4;
+        font-size: 0.8rem;
+    }
+
+.sidebar.collapsed .sidebar-footer .menu-btn {
+    visibility: visible;
+}
+
+.sidebar-footer.has-menu {
+    position: relative;
+}
+
+.sidebar-footer .options-menu {
+    bottom: 100%;
+    top: auto;
+    left: 50%;
+    transform: translateX(-50%);
+    right: auto;
+    min-width: 120px;
+}
+
+
+.share-list {
+    margin-top: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.share-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 8px;
+    border-radius: 6px;
+    background: rgba(79, 84, 92, 0.25);
+}
+
+    .share-row .email {
+        font-size: 0.85rem;
+        color: #dbdee1;
+    }
+
+    .share-row .menu-btn {
+        font-size: 0.9rem;
+    }
+
+
+

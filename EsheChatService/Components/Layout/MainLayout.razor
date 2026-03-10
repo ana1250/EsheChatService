@@ -1,0 +1,26 @@
+@inherits LayoutComponentBase
+@using EsheChatService.Services
+@inject ChatSessionManager SessionManager
+
+<div class="page">
+    <div class="sidebar @(IsCollapsed ? "collapsed" : "")">
+        <NavMenu @bind-IsCollapsed="IsCollapsed" />
+    </div>
+
+    <main>
+        <article class="content">
+            @Body
+        </article>
+    </main>
+
+    <Toaster />
+</div>
+
+@code {
+    private bool IsCollapsed = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await SessionManager.LoadAsync();
+    }
+}
