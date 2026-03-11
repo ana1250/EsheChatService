@@ -4,6 +4,7 @@ using System.Text.Json;
 using EsheChatService.Models;
 using EsheChatService.Services;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Moq;
 using Moq.Protected;
 
@@ -38,7 +39,7 @@ public class ChatServiceTests
             .ReturnsAsync(response);
 
         var httpClient = new HttpClient(handlerMock.Object);
-        return new ChatService(httpClient, _config, _userMock.Object);
+        return new ChatService(httpClient, _config, _userMock.Object, Mock.Of<ILogger<ChatService>>());
     }
 
     // ---- Guest Mode ----
@@ -73,7 +74,7 @@ public class ChatServiceTests
             .ReturnsAsync(new HttpResponseMessage());
 
         var httpClient = new HttpClient(handlerMock.Object);
-        var service = new ChatService(httpClient, _config, _userMock.Object);
+        var service = new ChatService(httpClient, _config, _userMock.Object, Mock.Of<ILogger<ChatService>>());
 
         var messages = new List<ChatMessage>
         {
@@ -137,7 +138,7 @@ public class ChatServiceTests
             .AddInMemoryCollection(new Dictionary<string, string?>())
             .Build();
 
-        var service = new ChatService(new HttpClient(), emptyConfig, _userMock.Object);
+        var service = new ChatService(new HttpClient(), emptyConfig, _userMock.Object, Mock.Of<ILogger<ChatService>>());
 
         var messages = new List<ChatMessage>
         {
@@ -198,7 +199,7 @@ public class ChatServiceTests
             .ThrowsAsync(new TaskCanceledException());
 
         var httpClient = new HttpClient(handlerMock.Object);
-        var service = new ChatService(httpClient, _config, _userMock.Object);
+        var service = new ChatService(httpClient, _config, _userMock.Object, Mock.Of<ILogger<ChatService>>());
 
         var messages = new List<ChatMessage>
         {

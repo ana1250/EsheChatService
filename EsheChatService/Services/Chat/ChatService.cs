@@ -10,6 +10,7 @@ namespace EsheChatService.Services
         private readonly HttpClient _http;
         private readonly IConfiguration _config;
         private readonly ICurrentUser _currentUser;
+        private readonly ILogger<ChatService> _logger;
 
         private static readonly string[] GuestReplies = new[]
         {
@@ -20,12 +21,14 @@ namespace EsheChatService.Services
             "To keep this conversation going and access all tools, please take a moment to sign in."
         };
 
-        public ChatService(HttpClient http, IConfiguration config, ICurrentUser currentUser)
+        public ChatService(HttpClient http, IConfiguration config, ICurrentUser currentUser, ILogger<ChatService> logger)
         {
             _http = http;
             _config = config;
             _currentUser = currentUser;
+            _logger = logger;
         }
+
         public async Task<string> GetReplyAsync(List<ChatMessage> history, CancellationToken cancellationToken = default)
         {
             if (history == null || history.Count == 0)
@@ -33,6 +36,7 @@ namespace EsheChatService.Services
 
             if (!_currentUser.IsAuthenticated)
             {
+                _logger.LogDebug("Guest user requested AI reply — returning sign-in prompt");
                 var random = new Random();
                 return GuestReplies[random.Next(GuestReplies.Length)];
             }
@@ -61,6 +65,10 @@ namespace EsheChatService.Services
             var apiKey = _config["AI:ApiKey"];
             if (string.IsNullOrWhiteSpace(apiKey))
                 throw new InvalidOperationException("AI API key not configured");
+
+            var sessionId = ordered[0].ChatSessionId;
+            _logger.LogInformation("AI request started for session {SessionId} with {MessageCount} messages",
+                sessionId, ordered.Count);
 
             var messages = ordered.Select(m => new
             {
@@ -100,25 +108,36 @@ namespace EsheChatService.Services
                 var body = await response.Content.ReadAsStringAsync(cancellationToken);
 
                 if (!response.IsSuccessStatusCode)
+                {
+                    _logger.LogError("Mistral API error {StatusCode} for session {SessionId}: {ResponseBody}",
+                        response.StatusCode, sessionId, body);
                     throw new Exception($"Mistral error ({response.StatusCode}): {body}");
+                }
 
                 using var doc = JsonDocument.Parse(body);
 
                 if (!doc.RootElement.TryGetProperty("choices", out var choices) ||
                     choices.GetArrayLength() == 0)
                 {
+                    _logger.LogError("Mistral API returned empty choices for session {SessionId}", sessionId);
                     throw new Exception("Mistral response missing choices");
                 }
 
-                return choices[0]
+                var reply = choices[0]
                     .GetProperty("message")
                     .GetProperty("content")
                     .GetString()
                     ?.Trim()
                     ?? "No response";
+
+                _logger.LogInformation("AI response received for session {SessionId} ({ReplyLength} chars)",
+                    sessionId, reply.Length);
+
+                return reply;
             }
             catch (TaskCanceledException)
             {
+                _logger.LogInformation("AI request cancelled by user for session {SessionId}", sessionId);
                 return "*(Generation stopped by user)*";
             }
         }

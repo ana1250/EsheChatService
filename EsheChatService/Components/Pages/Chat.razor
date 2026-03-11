@@ -21,6 +21,8 @@
 @using Microsoft.Extensions.DependencyInjection
 @inject IServiceScopeFactory ScopeFactory
 @inject ToastService ToastService
+@inject ILogger<Chat> Logger
+@inject IHttpContextAccessor HttpContextAccessor
 
 @implements IAsyncDisposable
 
@@ -174,6 +176,17 @@
             .WithUrl(Nav.ToAbsoluteUri("/chathub"), options =>
             {
                 options.Transports = HttpTransportType.WebSockets;
+
+                // Forward auth cookies so hub Context.User is authenticated
+                var httpContext = HttpContextAccessor.HttpContext;
+                if (httpContext != null)
+                {
+                    var cookies = httpContext.Request.Headers["Cookie"].ToString();
+                    if (!string.IsNullOrEmpty(cookies))
+                    {
+                        options.Headers.Add("Cookie", cookies);
+                    }
+                }
             })
             .WithAutomaticReconnect()
             .Build();
@@ -230,39 +243,46 @@
         if (_hub == null)
             return;
 
-        if (SessionId.HasValue)
+        try
         {
-            if (SessionManager.ActiveSession != null && SessionManager.ActiveSession.Id != SessionId.Value)
+            if (SessionId.HasValue)
+            {
+                if (SessionManager.ActiveSession != null && SessionManager.ActiveSession.Id != SessionId.Value)
+                {
+                    if (_hub.State == HubConnectionState.Connected)
+                    {
+                        await _hub.InvokeAsync("LeaveSession", SessionManager.ActiveSession.Id);
+                    }
+                }
+
+                if (_hub.State == HubConnectionState.Connected)
+                {
+                    await _hub.InvokeAsync("JoinSession", SessionId.Value);
+                }
+
+                if (SessionManager.ActiveSession?.Id != SessionId.Value)
+                {
+                    await SessionManager.SetActiveAsync(SessionId.Value);
+                    _scrollIntent = ScrollIntent.ForceScroll;
+                }
+                _shouldFocusChatInput = true;
+            }
+            else if (SessionManager.ActiveSession != null)
             {
                 if (_hub.State == HubConnectionState.Connected)
                 {
-                    await _hub.InvokeAsync("LeaveSession", SessionManager.ActiveSession.Id);
+                    await _hub.InvokeAsync(
+                        "LeaveSession",
+                        SessionManager.ActiveSession.Id);
                 }
-            }
 
-            if (_hub.State == HubConnectionState.Connected)
-            {
-                await _hub.InvokeAsync("JoinSession", SessionId.Value);
+                SessionManager.ClearActive();
+                _shouldFocusChatInput = true;
             }
-
-            if (SessionManager.ActiveSession?.Id != SessionId.Value)
-            {
-                await SessionManager.SetActiveAsync(SessionId.Value);
-                _scrollIntent = ScrollIntent.ForceScroll;
-            }
-            _shouldFocusChatInput = true;
         }
-        else if (SessionManager.ActiveSession != null)
+        catch (Exception ex)
         {
-            if (_hub.State == HubConnectionState.Connected)
-            {
-                await _hub.InvokeAsync(
-                    "LeaveSession",
-                    SessionManager.ActiveSession.Id);
-            }
-
-            SessionManager.ClearActive();
-            _shouldFocusChatInput = true;
+            Logger.LogError(ex, "Error during session parameter change for SessionId={SessionId}", SessionId);
         }
     }
 
@@ -337,7 +357,7 @@
                 }
                 catch (Exception ex)
                 {
-                   await Console.Out.WriteLineAsync($"Background persistence error (UserMsg): {ex.Message}");
+                    Logger.LogError(ex, "Background persistence error (UserMsg) for session {SessionId}", currentSessionId);
                 }
             });
 
@@ -367,7 +387,8 @@
             }
             catch (Exception ex)
             {
-                reply = $"**Error:** Unable to reach AI. Details: {ex.Message}";
+                Logger.LogError(ex, "AI request failed for session {SessionId}", SessionManager.ActiveSession?.Id);
+                reply = "**Error:** Something went wrong. Please try again.";
             }
 
             // Only clear typing UI if it hasn't been cleared by signalR or cancellation
@@ -412,7 +433,7 @@
                 }
                 catch (Exception ex)
                 {
-                   await Console.Out.WriteLineAsync($"Background persistence error (AssistantMsg): {ex.Message}");
+                    Logger.LogError(ex, "Background persistence error (AssistantMsg) for session {SessionId}", currentSessionId);
                 }
             });
 
@@ -522,7 +543,8 @@
         }
         catch (Exception ex)
         {
-            reply = $"**Error:** Unable to reach AI. Details: {ex.Message}";
+            Logger.LogError(ex, "Regenerate AI request failed for session {SessionId}", currentSessionId);
+            reply = "**Error:** Something went wrong. Please try again.";
         }
         finally
         {
@@ -558,7 +580,7 @@
             }
             catch (Exception ex)
             {
-                await Console.Out.WriteLineAsync($"Background persistence error (Regenerate): {ex.Message}");
+                Logger.LogError(ex, "Background persistence error (Regenerate) for session {SessionId}", currentSessionId);
             }
         });
     }

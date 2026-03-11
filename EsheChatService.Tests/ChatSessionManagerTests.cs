@@ -1,6 +1,7 @@
 using EsheChatService.Models;
 using EsheChatService.Services;
 using EsheChatService.Services.Repositories;
+using Microsoft.Extensions.Logging;
 using Moq;
 
 namespace EsheChatService.Tests;
@@ -20,7 +21,10 @@ public class ChatSessionManagerTests
         _userMock.Setup(u => u.IsAuthenticated).Returns(true);
         _userMock.Setup(u => u.Email).Returns("test@example.com");
 
-        _manager = new ChatSessionManager(_repoMock.Object, _userMock.Object);
+        _manager = new ChatSessionManager(
+            _repoMock.Object,
+            _userMock.Object,
+            Mock.Of<ILogger<ChatSessionManager>>());
     }
 
     // ---- Load ----

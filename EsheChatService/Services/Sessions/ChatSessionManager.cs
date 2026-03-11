@@ -1,5 +1,6 @@
 using EsheChatService.Models;
 using EsheChatService.Services.Repositories;
+using Microsoft.Extensions.Logging;
 using System.Security.Claims;
 
 namespace EsheChatService.Services
@@ -7,6 +8,7 @@ namespace EsheChatService.Services
     public class ChatSessionManager
     {
         private readonly IChatRepository _repository;
+        private readonly ILogger<ChatSessionManager> _logger;
         private readonly List<ChatSession> _sessions = new();
 
         private readonly List<ChatFolder> _folders = new();
@@ -29,10 +31,12 @@ namespace EsheChatService.Services
 
         public ChatSessionManager(
             IChatRepository repository,
-            ICurrentUser currentUser)
+            ICurrentUser currentUser,
+            ILogger<ChatSessionManager> logger)
         {
             _repository = repository;
             _currentUser = currentUser;
+            _logger = logger;
         }
 
         /* ---------------- Load ---------------- */
@@ -68,6 +72,8 @@ namespace EsheChatService.Services
                 _sessions.AddRange(_sharedWithMe);
 
                 _loaded = true;
+                _logger.LogInformation("User data loaded: {UserId} ({SessionCount} sessions, {FolderCount} folders, {SharedCount} shared)",
+                    userId, _sessions.Count, _folders.Count, _sharedWithMe.Count);
                 NotifyStateChanged();
             }
             finally
@@ -105,12 +111,18 @@ namespace EsheChatService.Services
         public async Task RenameFolderAsync(Guid folderId, string name)
         {
             var folder = _folders.FirstOrDefault(f => f.Id == folderId && f.UserOwnerId == _currentUser.UserId);
-            if (folder == null) return;
+            if (folder == null)
+            {
+                _logger.LogWarning("RenameFolderAsync blocked: folder {FolderId} not owned by {UserId}",
+                    folderId, _currentUser.UserId);
+                return;
+            }
 
             folder.Name = name.Trim();
 
             await _repository.UpdateFolderAsync(folder);
 
+            _logger.LogInformation("Folder renamed: {FolderId} NewName={FolderName}", folderId, folder.Name);
             NotifyStateChanged();
         }
 
@@ -126,6 +138,7 @@ namespace EsheChatService.Services
             await _repository.DeleteFolderAsync(folder);
 
             _folders.Remove(folder);
+            _logger.LogInformation("Folder deleted: {FolderId} by User={UserId}", folderId, _currentUser.UserId);
             NotifyStateChanged();
         }
 
@@ -138,6 +151,7 @@ namespace EsheChatService.Services
 
             await _repository.UpdateSessionAsync(session);
 
+            _logger.LogInformation("Session {SessionId} moved to folder {FolderId}", sessionId, folderId);
             NotifyStateChanged();
         }
 
@@ -159,6 +173,8 @@ namespace EsheChatService.Services
             _sessions.Insert(0, session);
             ActiveSession = session;
 
+            _logger.LogInformation("Chat session created: {SessionId} Title={Title} User={UserId}",
+                session.Id, session.Title, _currentUser.UserId);
             NotifyStateChanged();
         }
 
@@ -195,6 +211,8 @@ namespace EsheChatService.Services
                 msg.Id = messageId.Value;
 
             ActiveSession.Messages.Add(msg);
+            _logger.LogDebug("Message added in-memory: {MessageId} Role={Role} Session={SessionId}",
+                msg.Id, role, ActiveSession.Id);
             return msg;
         }
 
@@ -205,7 +223,11 @@ namespace EsheChatService.Services
 
             // Enforce ownership checks
             if (!_sessions.Any(s => s.Id == msg.ChatSessionId && s.UserOwnerId == _currentUser.UserId))
+            {
+                _logger.LogWarning("DeleteMessageAsync blocked: message {MessageId} not owned by {UserId}",
+                    messageId, _currentUser.UserId);
                 return;
+            }
 
             await _repository.DeleteMessageAsync(msg);
         }
@@ -232,13 +254,19 @@ namespace EsheChatService.Services
         public async Task RenameSessionAsync(Guid sessionId, string newTitle)
         {
             var session = _sessions.FirstOrDefault(s => s.Id == sessionId && s.UserOwnerId == _currentUser.UserId);
-            if (session == null) return;
+            if (session == null)
+            {
+                _logger.LogWarning("RenameSessionAsync blocked: session {SessionId} not owned by {UserId}",
+                    sessionId, _currentUser.UserId);
+                return;
+            }
 
             session.Title = newTitle.Trim();
             session.UpdatedAt = DateTime.UtcNow;
 
             await _repository.UpdateSessionAsync(session);
 
+            _logger.LogInformation("Session renamed: {SessionId} NewTitle={Title}", sessionId, session.Title);
             NotifyStateChanged();
         }
 
@@ -254,6 +282,8 @@ namespace EsheChatService.Services
 
             await _repository.DeleteSessionAsync(session);
 
+            _logger.LogInformation("Chat session deleted: {SessionId} by User={UserId}",
+                sessionId, _currentUser.UserId);
             NotifyStateChanged();
         }
 
@@ -262,6 +292,7 @@ namespace EsheChatService.Services
             var folder = _folders.FirstOrDefault(f => f.Id == folderId && f.UserOwnerId == _currentUser.UserId);
             if (folder == null) return;
 
+            var sessionCount = _sessions.Count(s => s.FolderId == folderId);
             await _repository.DeleteFolderAndSessionsAsync(folder);
 
             // sync memory
@@ -271,6 +302,8 @@ namespace EsheChatService.Services
             if (ActiveSession != null && ActiveSession.FolderId == folderId)
                 ActiveSession = null;
 
+            _logger.LogInformation("Folder and {SessionCount} sessions deleted: {FolderId} by User={UserId}",
+                sessionCount, folderId, _currentUser.UserId);
             NotifyStateChanged();
         }
 
@@ -296,6 +329,8 @@ namespace EsheChatService.Services
 
             sharedSession.RemovedAt = DateTime.UtcNow;
             await _repository.UpdateSharedSessionAsync(sharedSession);
+            _logger.LogInformation("Share removed: {SharedSessionId} Session={SessionId} by User={UserId}",
+                sharedSessionId, sharedSession.ChatSessionId, _currentUser.UserId);
             NotifyStateChanged();
         }
 
@@ -322,6 +357,8 @@ namespace EsheChatService.Services
             };
 
             await _repository.AddSharedSessionAsync(sharedSession);
+            _logger.LogInformation("Session {SessionId} shared with {Email} by User={UserId}",
+                chatSessionId, email, _currentUser.UserId);
             NotifyStateChanged();
         }
     }

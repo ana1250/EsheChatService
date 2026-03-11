@@ -3,7 +3,7 @@
 @implements IDisposable
 
 <div class="toast-container">
-    @foreach (var toast in ToastService.Toasts)
+    @foreach (var toast in ToastService.Toasts.ToList())
     {
         <div @key="toast.Id" class="toast-item @toast.Type">
             <div class="toast-icon">
@@ -23,7 +23,7 @@
             <div class="toast-content">
                 @toast.Message
             </div>
-            <button class="toast-close" @onclick="() => ToastService.RemoveToast(toast.Id)">✕</button>
+            <button class="toast-close" @onclick="() => Dismiss(toast.Id)">✕</button>
         </div>
     }
 </div>
@@ -31,11 +31,21 @@
 @code {
     protected override void OnInitialized()
     {
-        ToastService.OnChange += StateHasChanged;
+        ToastService.OnChange += HandleChange;
+    }
+
+    private void HandleChange()
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void Dismiss(Guid id)
+    {
+        ToastService.RemoveToast(id);
     }
 
     public void Dispose()
     {
-        ToastService.OnChange -= StateHasChanged;
+        ToastService.OnChange -= HandleChange;
     }
 }

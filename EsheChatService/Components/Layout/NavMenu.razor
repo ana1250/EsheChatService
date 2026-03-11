@@ -7,6 +7,7 @@
 @inject ChatSessionManager SessionManager
 @inject ToastService ToastService
 @inject NavigationManager Nav
+@inject ILogger<NavMenu> Logger
 
 @implements IDisposable
 
@@ -511,8 +512,16 @@
     async Task CommitRename(Guid id, string text)
     {
         _editingSessionId = null;
-        await SessionManager.RenameSessionAsync(id, text);
-        ToastService.ShowToast("Chat renamed", "success");
+        try
+        {
+            await SessionManager.RenameSessionAsync(id, text);
+            ToastService.ShowToast("Chat renamed", "success");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to rename session {SessionId}", id);
+            ToastService.ShowToast("Failed to rename chat", "error");
+        }
     }
 
 
@@ -529,8 +538,16 @@
 
         if (idToDelete.HasValue)
         {
-            await SessionManager.DeleteSessionAsync(idToDelete.Value);
-            ToastService.ShowToast("Chat deleted");
+            try
+            {
+                await SessionManager.DeleteSessionAsync(idToDelete.Value);
+                ToastService.ShowToast("Chat deleted");
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Failed to delete session {SessionId}", idToDelete.Value);
+                ToastService.ShowToast("Failed to delete chat", "error");
+            }
         }
     }
 
@@ -584,8 +601,16 @@
         {
             var text = _folderRenameText;
             CancelFolderRename();
-            await SessionManager.RenameFolderAsync(id, text);
-            ToastService.ShowToast("Folder renamed", "success");
+            try
+            {
+                await SessionManager.RenameFolderAsync(id, text);
+                ToastService.ShowToast("Folder renamed", "success");
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Failed to rename folder {FolderId}", id);
+                ToastService.ShowToast("Failed to rename folder", "error");
+            }
         }
         else if (e.Key == "Escape")
         {
@@ -615,15 +640,23 @@
 
         CloseDeleteFolderModal();
 
-        if (deleteSessions)
+        try
         {
-            await SessionManager.DeleteFolderAndSessionsAsync(idToDelete.Value);
-            ToastService.ShowToast("Folder and chats deleted");
+            if (deleteSessions)
+            {
+                await SessionManager.DeleteFolderAndSessionsAsync(idToDelete.Value);
+                ToastService.ShowToast("Folder and chats deleted");
+            }
+            else
+            {
+                await SessionManager.DeleteFolderAsync(idToDelete.Value);
+                ToastService.ShowToast("Folder deleted");
+            }
         }
-        else
+        catch (Exception ex)
         {
-            await SessionManager.DeleteFolderAsync(idToDelete.Value);
-            ToastService.ShowToast("Folder deleted");
+            Logger.LogError(ex, "Failed to delete folder {FolderId}", idToDelete.Value);
+            ToastService.ShowToast("Failed to delete folder", "error");
         }
     }
 
@@ -701,18 +734,26 @@
 
         CloseMoveModal();
 
-        if (isCreating)
+        try
         {
-            var newFolder = await SessionManager.CreateFolderAsync(newName);
-            targetFolderId = newFolder.Id;
-            ToastService.ShowToast($"Folder '{newName}' created", "success");
-        }
+            if (isCreating)
+            {
+                var newFolder = await SessionManager.CreateFolderAsync(newName);
+                targetFolderId = newFolder.Id;
+                ToastService.ShowToast($"Folder '{newName}' created", "success");
+            }
 
-        await SessionManager.MoveSessionToFolderAsync(
-            sessionId,
-            targetFolderId
-        );
-        ToastService.ShowToast("Chat moved", "success");
+            await SessionManager.MoveSessionToFolderAsync(
+                sessionId,
+                targetFolderId
+            );
+            ToastService.ShowToast("Chat moved", "success");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to move session {SessionId} to folder {FolderId}", sessionId, targetFolderId);
+            ToastService.ShowToast("Failed to move chat", "error");
+        }
     }
 
     void CloseMoveModal()
@@ -788,8 +829,16 @@
 
         if (sessionId.HasValue && !string.IsNullOrWhiteSpace(email))
         {
-            await SessionManager.ShareSessionAsync(sessionId.Value, email);
-            ToastService.ShowToast($"Chat shared with {email}", "success");
+            try
+            {
+                await SessionManager.ShareSessionAsync(sessionId.Value, email);
+                ToastService.ShowToast($"Chat shared with {email}", "success");
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Failed to share session {SessionId} with {Email}", sessionId.Value, email);
+                ToastService.ShowToast("Failed to share chat", "error");
+            }
         }
     }
 
@@ -798,8 +847,16 @@
     {
 		if (sharedSessionId == Guid.Empty)
 			return;
-		await SessionManager.RemoveShareAsync(sharedSessionId);
-        ToastService.ShowToast("Access removed");
+        try
+        {
+            await SessionManager.RemoveShareAsync(sharedSessionId);
+            ToastService.ShowToast("Access removed");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to remove share {SharedSessionId}", sharedSessionId);
+            ToastService.ShowToast("Failed to remove access", "error");
+        }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)

@@ -1,16 +1,19 @@
 using EsheChatService.Data;
 using EsheChatService.Models;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace EsheChatService.Services.Repositories
 {
     public class ChatRepository : IChatRepository
     {
         private readonly IDbContextFactory<ChatDbContext> _dbFactory;
+        private readonly ILogger<ChatRepository> _logger;
 
-        public ChatRepository(IDbContextFactory<ChatDbContext> dbFactory)
+        public ChatRepository(IDbContextFactory<ChatDbContext> dbFactory, ILogger<ChatRepository> logger)
         {
             _dbFactory = dbFactory;
+            _logger = logger;
         }
 
         public async Task<List<ChatFolder>> GetUserFoldersAsync(Guid userId)
@@ -52,6 +55,8 @@ namespace EsheChatService.Services.Repositories
             using var db = _dbFactory.CreateDbContext();
             db.ChatFolders.Add(folder);
             await db.SaveChangesAsync();
+            _logger.LogInformation("Folder created: {FolderId} Name={FolderName} Owner={OwnerId}",
+                folder.Id, folder.Name, folder.UserOwnerId);
             return folder;
         }
 
@@ -60,6 +65,7 @@ namespace EsheChatService.Services.Repositories
             using var db = _dbFactory.CreateDbContext();
             db.ChatFolders.Update(folder);
             await db.SaveChangesAsync();
+            _logger.LogDebug("Folder updated: {FolderId} Name={FolderName}", folder.Id, folder.Name);
         }
 
         public async Task DeleteFolderAsync(ChatFolder folder)
@@ -67,6 +73,7 @@ namespace EsheChatService.Services.Repositories
             using var db = _dbFactory.CreateDbContext();
             db.ChatFolders.Remove(folder);
             await db.SaveChangesAsync();
+            _logger.LogInformation("Folder deleted: {FolderId}", folder.Id);
         }
 
         public async Task DeleteFolderAndSessionsAsync(ChatFolder folder)
@@ -79,6 +86,8 @@ namespace EsheChatService.Services.Repositories
             db.ChatSessions.RemoveRange(sessions);
             db.ChatFolders.Remove(folder);
             await db.SaveChangesAsync();
+            _logger.LogInformation("Folder deleted with {SessionCount} sessions: {FolderId}",
+                sessions.Count, folder.Id);
         }
 
         public async Task<ChatSession> CreateSessionAsync(ChatSession session)
@@ -86,6 +95,8 @@ namespace EsheChatService.Services.Repositories
             using var db = _dbFactory.CreateDbContext();
             db.ChatSessions.Add(session);
             await db.SaveChangesAsync();
+            _logger.LogInformation("Session created: {SessionId} Title={Title} Owner={OwnerId}",
+                session.Id, session.Title, session.UserOwnerId);
             return session;
         }
 
@@ -94,6 +105,7 @@ namespace EsheChatService.Services.Repositories
             using var db = _dbFactory.CreateDbContext();
             db.ChatSessions.Update(session);
             await db.SaveChangesAsync();
+            _logger.LogDebug("Session updated: {SessionId} Title={Title}", session.Id, session.Title);
         }
 
         public async Task DeleteSessionAsync(ChatSession session)
@@ -101,6 +113,7 @@ namespace EsheChatService.Services.Repositories
             using var db = _dbFactory.CreateDbContext();
             db.ChatSessions.Remove(session);
             await db.SaveChangesAsync();
+            _logger.LogInformation("Session deleted: {SessionId}", session.Id);
         }
 
         public async Task<List<ChatMessage>> GetSessionMessagesAsync(Guid sessionId)
@@ -130,6 +143,8 @@ namespace EsheChatService.Services.Repositories
             using var db = _dbFactory.CreateDbContext();
             db.ChatMessages.Add(message);
             await db.SaveChangesAsync();
+            _logger.LogDebug("Message persisted: {MessageId} Role={Role} Session={SessionId}",
+                message.Id, message.Role, message.ChatSessionId);
         }
 
         public async Task UpdateSessionTimeAndAddMessageAsync(Guid sessionId, DateTime updatedAt, ChatMessage message)
@@ -142,6 +157,8 @@ namespace EsheChatService.Services.Repositories
             }
             db.ChatMessages.Add(message);
             await db.SaveChangesAsync();
+            _logger.LogDebug("Message persisted with session update: {MessageId} Role={Role} Session={SessionId}",
+                message.Id, message.Role, sessionId);
         }
 
         public async Task DeleteMessageAsync(ChatMessage message)
@@ -149,6 +166,7 @@ namespace EsheChatService.Services.Repositories
             using var db = _dbFactory.CreateDbContext();
             db.ChatMessages.Remove(message);
             await db.SaveChangesAsync();
+            _logger.LogInformation("Message deleted: {MessageId}", message.Id);
         }
 
         public async Task<SharedSession?> GetSharedSessionAsync(Guid sharedSessionId)
@@ -172,6 +190,8 @@ namespace EsheChatService.Services.Repositories
             using var db = _dbFactory.CreateDbContext();
             db.SharedSessions.Add(sharedSession);
             await db.SaveChangesAsync();
+            _logger.LogInformation("Session {SessionId} shared with {Email}",
+                sharedSession.ChatSessionId, sharedSession.SharedWithEmail);
         }
 
         public async Task UpdateSharedSessionAsync(SharedSession sharedSession)
@@ -179,12 +199,18 @@ namespace EsheChatService.Services.Repositories
             using var db = _dbFactory.CreateDbContext();
             db.SharedSessions.Update(sharedSession);
             await db.SaveChangesAsync();
+            _logger.LogDebug("SharedSession updated: {SharedSessionId} RemovedAt={RemovedAt}",
+                sharedSession.Id, sharedSession.RemovedAt);
         }
 
         public async Task<Guid> GetUserIdByEmailAsync(string email)
         {
             using var db = _dbFactory.CreateDbContext();
             var user = await db.Users.FirstOrDefaultAsync(u => u.Email == email);
+            if (user == null)
+            {
+                _logger.LogWarning("Share target user not found: {Email}", email);
+            }
             return user?.Id ?? Guid.Empty;
         }
     }

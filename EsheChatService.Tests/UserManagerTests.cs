@@ -1,6 +1,7 @@
 using EsheChatService.Data;
 using EsheChatService.Models;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Moq;
 
 namespace EsheChatService.Tests;
@@ -41,7 +42,7 @@ public class UserManagerTests
             await db.SaveChangesAsync();
         }
 
-        var manager = new UserManager(factory);
+        var manager = new UserManager(factory, Mock.Of<ILogger<UserManager>>());
         await manager.ValidateAndUpdateGoogleUserAsync("test@example.com", "google-sub-123");
 
         using (var db = factory.CreateDbContext())
@@ -71,7 +72,7 @@ public class UserManagerTests
             await db.SaveChangesAsync();
         }
 
-        var manager = new UserManager(factory);
+        var manager = new UserManager(factory, Mock.Of<ILogger<UserManager>>());
         await manager.ValidateAndUpdateGoogleUserAsync("test@example.com", "new-sub-attempt");
 
         using (var db = factory.CreateDbContext())
@@ -87,7 +88,7 @@ public class UserManagerTests
         var dbName = Guid.NewGuid().ToString();
         var factory = CreateInMemoryFactory(dbName);
 
-        var manager = new UserManager(factory);
+        var manager = new UserManager(factory, Mock.Of<ILogger<UserManager>>());
 
         await Assert.ThrowsAsync<InvalidOperationException>(
             () => manager.ValidateAndUpdateGoogleUserAsync("nobody@example.com", "sub-123"));
