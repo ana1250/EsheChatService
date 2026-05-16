@@ -4,10 +4,10 @@
 
 <div class="page">
     <div class="sidebar @(IsCollapsed ? "collapsed" : "")">
-        <NavMenu @bind-IsCollapsed="IsCollapsed" />
+        <NavMenu @bind-IsCollapsed="IsCollapsed" @ref="_navMenu" />
     </div>
 
-    <main>
+    <main @onclick="OnMainClicked">
         <article class="content">
             @Body
         </article>
@@ -18,9 +18,15 @@
 
 @code {
     private bool IsCollapsed = false;
+    private NavMenu _navMenu = default!;
 
     protected override async Task OnInitializedAsync()
     {
         await SessionManager.LoadAsync();
+    }
+
+    private void OnMainClicked()
+    {
+        _navMenu?.CloseMenus();
     }
 }

@@ -29,7 +29,7 @@ namespace EsheChatService.Services
             _logger = logger;
         }
 
-        public async Task<string> GetReplyAsync(List<ChatMessage> history, CancellationToken cancellationToken = default)
+        public async Task<ChatReply> GetReplyAsync(List<ChatMessage> history, CancellationToken cancellationToken = default)
         {
             if (history == null || history.Count == 0)
                 throw new ArgumentException("Conversation history is empty");
@@ -38,7 +38,7 @@ namespace EsheChatService.Services
             {
                 _logger.LogDebug("Guest user requested AI reply — returning sign-in prompt");
                 var random = new Random();
-                return GuestReplies[random.Next(GuestReplies.Length)];
+                return new ChatReply(GuestReplies[random.Next(GuestReplies.Length)], null);
             }
 
             // Ensure valid messages only
@@ -130,15 +130,29 @@ namespace EsheChatService.Services
                     ?.Trim()
                     ?? "No response";
 
+                // Extract token usage
+                TokenUsage? usage = null;
+                if (doc.RootElement.TryGetProperty("usage", out var usageEl))
+                {
+                    usage = new TokenUsage(
+                        usageEl.GetProperty("prompt_tokens").GetInt32(),
+                        usageEl.GetProperty("completion_tokens").GetInt32(),
+                        usageEl.GetProperty("total_tokens").GetInt32());
+
+                    _logger.LogInformation(
+                        "Token usage for session {SessionId}: prompt={Prompt}, completion={Completion}, total={Total}",
+                        sessionId, usage.PromptTokens, usage.CompletionTokens, usage.TotalTokens);
+                }
+
                 _logger.LogInformation("AI response received for session {SessionId} ({ReplyLength} chars)",
                     sessionId, reply.Length);
 
-                return reply;
+                return new ChatReply(reply, usage);
             }
             catch (TaskCanceledException)
             {
                 _logger.LogInformation("AI request cancelled by user for session {SessionId}", sessionId);
-                return "*(Generation stopped by user)*";
+                return new ChatReply("*(Generation stopped by user)*", null);
             }
         }
 

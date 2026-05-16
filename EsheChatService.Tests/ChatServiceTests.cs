@@ -57,7 +57,7 @@ public class ChatServiceTests
 
         var reply = await service.GetReplyAsync(messages);
 
-        Assert.Contains("sign in", reply, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("sign in", reply.Content, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -180,7 +180,7 @@ public class ChatServiceTests
 
         var reply = await service.GetReplyAsync(messages);
 
-        Assert.Equal("Hello from AI!", reply);
+        Assert.Equal("Hello from AI!", reply.Content);
     }
 
     // ---- Cancellation ----
@@ -211,7 +211,7 @@ public class ChatServiceTests
 
         var reply = await service.GetReplyAsync(messages, cts.Token);
 
-        Assert.Contains("stopped by user", reply);
+        Assert.Contains("stopped by user", reply.Content);
     }
 
     // ---- API Error ----

@@ -92,6 +92,15 @@
                         </div>
                     }
 
+                    @if (_tokenUsage.TryGetValue(msg.Id, out var usage))
+                    {
+                        <div class="token-usage">
+                            <span title="Prompt tokens">⬆ @usage.PromptTokens</span>
+                            <span title="Completion tokens">⬇ @usage.CompletionTokens</span>
+                            <span title="Total tokens">Σ @usage.TotalTokens</span>
+                        </div>
+                    }
+
                 </li>
             }
 
@@ -158,6 +167,7 @@
     private ScrollIntent _scrollIntent = ScrollIntent.None;
     private bool _shouldFocusChatInput = true;
     private CancellationTokenSource? _cts;
+    private readonly Dictionary<Guid, TokenUsage> _tokenUsage = new();
 
     HubConnection? _hub;
     
@@ -376,10 +386,13 @@
             _cts = new CancellationTokenSource();
             var currentToken = _cts.Token; // Capture local to this specific Send() invocation
             string reply;
+            TokenUsage? tokenUsage = null;
             try
             {
-                reply = await ChatService.GetReplyAsync(
+                var chatReply = await ChatService.GetReplyAsync(
                     SessionManager.ActiveSession.Messages, currentToken);
+                reply = chatReply.Content;
+                tokenUsage = chatReply.Usage;
             }
             catch (TaskCanceledException)
             {
@@ -409,6 +422,8 @@
 
             var assistantMsgId = Guid.NewGuid();
             SessionManager.AddMessageInMemory(ChatRole.Assistant, reply, assistantMsgId);
+            if (tokenUsage != null)
+                _tokenUsage[assistantMsgId] = tokenUsage;
             _scrollIntent = ScrollIntent.ForceScroll;
             _shouldFocusChatInput = true;
             await InvokeAsync(StateHasChanged);
@@ -520,6 +535,7 @@
         if (lastAssistant == null) return;
 
         // 2. Remove it (memory)
+        _tokenUsage.Remove(lastAssistant.Id);
         session.Messages.Remove(lastAssistant);
 
         // 3. Remove it (DB)
@@ -533,9 +549,12 @@
 
         _cts = new CancellationTokenSource();
         string reply;
+        TokenUsage? tokenUsage = null;
         try
         {
-            reply = await ChatService.GetReplyAsync(session.Messages, _cts.Token);
+            var chatReply = await ChatService.GetReplyAsync(session.Messages, _cts.Token);
+            reply = chatReply.Content;
+            tokenUsage = chatReply.Usage;
         }
         catch (TaskCanceledException)
         {
@@ -556,6 +575,8 @@
 
         var assistantMsgId = Guid.NewGuid();
         SessionManager.AddMessageInMemory(ChatRole.Assistant, reply, assistantMsgId);
+        if (tokenUsage != null)
+            _tokenUsage[assistantMsgId] = tokenUsage;
         _scrollIntent = ScrollIntent.ForceScroll;
         _shouldFocusChatInput = true;
         await InvokeAsync(StateHasChanged);

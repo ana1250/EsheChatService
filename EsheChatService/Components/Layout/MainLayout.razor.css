@@ -1,7 +1,7 @@
 .page {
     display: flex;
     height: 100vh;
-    background-color: #1e1f22;
+    background-color: var(--bg-base);
 }
 
 main {
@@ -10,18 +10,19 @@ main {
     flex-direction: column;
     min-width: 0;
     height: 100vh;
-    background-color: #313338;
+    background-color: var(--bg-elevated);
 }
 
 .sidebar {
     width: 260px;
     height: 100vh;
-    background-color: #2b2d31;
-    border-right: 1px solid rgba(255, 255, 255, 0.06);
+    background-color: var(--bg-raised);
+    border-right: 1px solid var(--border-subtle);
     display: flex;
     flex-direction: column;
     flex-shrink: 0;
-    transition: width 0.25s ease, box-shadow 0.25s ease;
+    transition: width var(--duration-norm) var(--ease-out),
+                box-shadow var(--duration-norm) var(--ease-out);
     box-shadow: inset -1px 0 0 rgba(0,0,0,0.4);
 }
 

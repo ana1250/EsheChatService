@@ -1,40 +1,45 @@
-﻿/* =============================
+/* =================================
    Chat Session Row
-============================= */
+================================= */
 
 .chat-session-item {
     display: flex;
     align-items: center;
     gap: 8px;
     padding: 8px 12px;
-    border-radius: 6px;
-    color: #dbdee1;
-    font-size: 0.95rem;
+    border-radius: var(--radius-md);
+    color: var(--text-normal);
+    font-size: 0.9rem;
     cursor: pointer;
     position: relative;
     min-width: 0;
+    transition: background-color var(--duration-fast) ease,
+                color var(--duration-fast) ease,
+                box-shadow var(--duration-fast) ease;
 }
 
     /* Hover */
     .chat-session-item:hover {
-        background-color: rgba(79, 84, 92, 0.35);
+        background-color: var(--bg-hover);
+        color: var(--text-primary);
     }
 
     /* Active session */
     .chat-session-item.active {
-        background-color: rgba(88, 101, 242, 0.25);
-        color: #ffffff;
+        background-color: var(--bg-active);
+        color: var(--text-primary);
+        box-shadow: inset 3px 0 0 var(--accent);
     }
 
     /* Editing state */
     .chat-session-item.editing {
-        background-color: rgba(88, 101, 242, 0.15);
+        background-color: var(--accent-soft);
         cursor: default;
     }
 
     .chat-session-item .menu-btn {
         opacity: 0;
-        transition: opacity 0.15s ease;
+        transition: opacity var(--duration-fast) ease;
     }
 
 .sidebar.collapsed .chat-session-item {
@@ -42,20 +47,21 @@
     pointer-events: none;
 }
 
-/* =============================
-   Chat title
-============================= */
+/* =================================
+   Chat Title
+================================= */
 
 .chat-title {
     flex: 1;
     font-weight: 500;
-    color: #f2f3f5;
+    color: inherit;
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
     user-select: none;
     min-width: 0;
 }
+
 .sidebar.collapsed .chat-title {
     display: none;
     pointer-events: none;

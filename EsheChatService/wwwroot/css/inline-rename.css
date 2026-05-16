@@ -1,14 +1,22 @@
-﻿.inline-rename-input {
+.inline-rename-input {
     flex: 1;
-    background-color: #1e1f22;
-    border: 1px solid rgba(255,255,255,0.25);
-    border-radius: 4px;
-    padding: 4px 6px;
-    color: #ffffff;
-    font-size: 0.92rem;
+    background-color: var(--bg-base);
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: var(--radius-sm);
+    padding: 5px 8px;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    font-family: inherit;
     outline: none;
+    transition: border-color var(--duration-fast) ease,
+                box-shadow var(--duration-fast) ease;
 }
 
     .inline-rename-input:focus {
-        border-color: #5865f2;
+        border-color: var(--accent);
+        box-shadow: 0 0 0 2px var(--accent-soft);
+    }
+
+    .inline-rename-input::placeholder {
+        color: var(--text-faint);
     }
