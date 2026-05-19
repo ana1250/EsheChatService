@@ -1,6 +1,11 @@
 using EsheChatService.Models;
 using EsheChatService.Services;
+using EsheChatService.Services.Folders;
+using EsheChatService.Services.Messages;
 using EsheChatService.Services.Repositories;
+using EsheChatService.Services.Sessions;
+using EsheChatService.Services.Sharing;
+using EsheChatService.Services.User;
 using Microsoft.Extensions.Logging;
 using Moq;
 
@@ -21,8 +26,28 @@ public class ChatSessionManagerTests
         _userMock.Setup(u => u.IsAuthenticated).Returns(true);
         _userMock.Setup(u => u.Email).Returns("test@example.com");
 
+        var sessionService = new SessionService(
+            _repoMock.Object,
+            Mock.Of<ILogger<SessionService>>());
+
+        var folderService = new FolderService(
+            _repoMock.Object,
+            Mock.Of<ILogger<FolderService>>());
+
+        var messageService = new MessageService(
+            _repoMock.Object,
+            Mock.Of<ILogger<MessageService>>());
+
+        var shareService = new ShareService(
+            _repoMock.Object,
+            Mock.Of<ILogger<ShareService>>());
+
         _manager = new ChatSessionManager(
             _repoMock.Object,
+            sessionService,
+            folderService,
+            messageService,
+            shareService,
             _userMock.Object,
             Mock.Of<ILogger<ChatSessionManager>>());
     }

@@ -1,65 +1,68 @@
 using System.Security.Claims;
 using EsheChatService.Data;
+using EsheChatService.Services.Repositories;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
-public interface ICurrentUser
+namespace EsheChatService.Services.User
 {
-    bool IsAuthenticated { get; }
-    Guid UserId { get; }
-    string? Email { get; }
-}
-
-public sealed class CurrentUser : ICurrentUser
-{
-    private readonly IHttpContextAccessor _http;
-    private readonly IDbContextFactory<ChatDbContext> _dbFactory;
-    private readonly ILogger<CurrentUser> _logger;
-
-    private Guid? _cachedUserId;
-
-    public CurrentUser(
-        IHttpContextAccessor http,
-        IDbContextFactory<ChatDbContext> dbFactory,
-        ILogger<CurrentUser> logger)
+    public interface ICurrentUser
     {
-        _http = http;
-        _dbFactory = dbFactory;
-        _logger = logger;
+        bool IsAuthenticated { get; }
+        Guid UserId { get; }
+        string? Email { get; }
     }
 
-    public bool IsAuthenticated =>
-        _http.HttpContext?.User?.Identity?.IsAuthenticated == true;
-
-    public string? Email =>
-        _http.HttpContext?.User?
-            .FindFirst(ClaimTypes.Email)?.Value;
-
-    public Guid UserId
+    public sealed class CurrentUser : ICurrentUser
     {
-        get
+        private readonly IHttpContextAccessor _http;
+        private readonly IDbContextFactory<ChatDbContext> _dbFactory;
+        private readonly ILogger<CurrentUser> _logger;
+
+        private Guid? _cachedUserId;
+
+        public CurrentUser(
+            IHttpContextAccessor http,
+            IDbContextFactory<ChatDbContext> dbFactory,
+            ILogger<CurrentUser> logger)
         {
-            if (!IsAuthenticated)
-                return Guid.Empty;
+            _http = http;
+            _dbFactory = dbFactory;
+            _logger = logger;
+        }
 
-            if (_cachedUserId.HasValue)
-                return _cachedUserId.Value;
+        public bool IsAuthenticated =>
+            _http.HttpContext?.User?.Identity?.IsAuthenticated == true;
 
-            using var db = _dbFactory.CreateDbContext();
+        public string? Email =>
+            _http.HttpContext?.User?
+                .FindFirst(ClaimTypes.Email)?.Value;
 
-            _cachedUserId = db.Users
-                .Where(u => u.Email == Email && u.IsActive)
-                .Select(u => u.Id)
-                .FirstOrDefault();
-
-            if (_cachedUserId == Guid.Empty)
+        public Guid UserId
+        {
+            get
             {
-                _logger.LogWarning("Authenticated user not found in database: {Email}", Email);
-            }
+                if (!IsAuthenticated)
+                    return Guid.Empty;
 
-            return _cachedUserId.Value;
+                if (_cachedUserId.HasValue)
+                    return _cachedUserId.Value;
+
+                using var db = _dbFactory.CreateDbContext();
+
+                _cachedUserId = db.Users
+                    .Where(u => u.Email == Email && u.IsActive)
+                    .Select(u => u.Id)
+                    .FirstOrDefault();
+
+                if (_cachedUserId == Guid.Empty)
+                {
+                    _logger.LogWarning("Authenticated user not found in database: {Email}", Email);
+                }
+
+                return _cachedUserId.Value;
+            }
         }
     }
-
 }

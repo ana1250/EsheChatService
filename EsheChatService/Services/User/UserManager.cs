@@ -1,38 +1,45 @@
-using EsheChatService.Data;
-using Microsoft.EntityFrameworkCore;
+using EsheChatService.Models;
+using EsheChatService.Services.Repositories;
+using Microsoft.Extensions.Logging;
 
-public class UserManager
+namespace EsheChatService.Services.User
 {
-    private readonly IDbContextFactory<ChatDbContext> _dbFactory;
-    private readonly ILogger<UserManager> _logger;
-
-    public UserManager(IDbContextFactory<ChatDbContext> dbFactory, ILogger<UserManager> logger)
+    public interface IUserManager
     {
-        _dbFactory = dbFactory;
-        _logger = logger;
+        Task ValidateAndUpdateGoogleUserAsync(string email, string sub);
     }
 
-    public async Task ValidateAndUpdateGoogleUserAsync(string email, string sub)
+    public class UserManager : IUserManager
     {
-        await using var db = await _dbFactory.CreateDbContextAsync();
+        private readonly IChatRepository _repository;
+        private readonly ILogger<UserManager> _logger;
 
-        var user = await db.Users.FirstOrDefaultAsync(u => u.Email == email);
-
-        if (user == null)
+        public UserManager(IChatRepository repository, ILogger<UserManager> logger)
         {
-            _logger.LogWarning("Login rejected: unregistered email {Email}", email);
-            throw new InvalidOperationException("User is not registered");
+            _repository = repository;
+            _logger = logger;
         }
 
-        if (user.ExternalUserId == null)
+        public async Task ValidateAndUpdateGoogleUserAsync(string email, string sub)
         {
-            user.ExternalUserId = sub;
-            _logger.LogInformation("Google sub linked for user {UserId} ({Email})", user.Id, email);
+            var user = await _repository.GetUserByEmailAsync(email);
+
+            if (user == null)
+            {
+                _logger.LogWarning("Login rejected: unregistered email {Email}", email);
+                throw new InvalidOperationException("User is not registered");
+            }
+
+            if (user.ExternalUserId == null)
+            {
+                user.ExternalUserId = sub;
+                _logger.LogInformation("Google sub linked for user {UserId} ({Email})", user.Id, email);
+            }
+
+            user.LastLoginAt = DateTime.UtcNow;
+
+            await _repository.UpdateUserAsync(user);
+            _logger.LogInformation("User login successful: {UserId} ({Email})", user.Id, email);
         }
-
-        user.LastLoginAt = DateTime.UtcNow;
-
-        await db.SaveChangesAsync();
-        _logger.LogInformation("User login successful: {UserId} ({Email})", user.Id, email);
     }
 }

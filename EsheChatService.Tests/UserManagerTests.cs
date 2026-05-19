@@ -1,6 +1,6 @@
-using EsheChatService.Data;
 using EsheChatService.Models;
-using Microsoft.EntityFrameworkCore;
+using EsheChatService.Services.Repositories;
+using EsheChatService.Services.User;
 using Microsoft.Extensions.Logging;
 using Moq;
 
@@ -8,89 +8,64 @@ namespace EsheChatService.Tests;
 
 public class UserManagerTests
 {
-    private IDbContextFactory<ChatDbContext> CreateInMemoryFactory(string dbName)
+    private readonly Mock<IChatRepository> _repoMock;
+    private readonly UserManager _manager;
+
+    public UserManagerTests()
     {
-        var options = new DbContextOptionsBuilder<ChatDbContext>()
-            .UseInMemoryDatabase(dbName)
-            .Options;
-
-        var factoryMock = new Mock<IDbContextFactory<ChatDbContext>>();
-        factoryMock.Setup(f => f.CreateDbContext())
-            .Returns(() => new ChatDbContext(options));
-        factoryMock.Setup(f => f.CreateDbContextAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(() => new ChatDbContext(options));
-
-        return factoryMock.Object;
+        _repoMock = new Mock<IChatRepository>();
+        _manager = new UserManager(_repoMock.Object, Mock.Of<ILogger<UserManager>>());
     }
 
     [Fact]
     public async Task ValidateAndUpdateGoogleUserAsync_ExistingUser_UpdatesLastLogin()
     {
-        var dbName = Guid.NewGuid().ToString();
-        var factory = CreateInMemoryFactory(dbName);
-
-        // Seed a user
-        using (var db = factory.CreateDbContext())
+        var user = new AppUser
         {
-            db.Users.Add(new AppUser
-            {
-                Id = Guid.NewGuid(),
-                Email = "test@example.com",
-                IsActive = true,
-                CreatedAt = DateTime.UtcNow
-            });
-            await db.SaveChangesAsync();
-        }
+            Id = Guid.NewGuid(),
+            Email = "test@example.com",
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow
+        };
 
-        var manager = new UserManager(factory, Mock.Of<ILogger<UserManager>>());
-        await manager.ValidateAndUpdateGoogleUserAsync("test@example.com", "google-sub-123");
+        _repoMock.Setup(r => r.GetUserByEmailAsync("test@example.com"))
+            .ReturnsAsync(user);
 
-        using (var db = factory.CreateDbContext())
-        {
-            var user = await db.Users.FirstAsync(u => u.Email == "test@example.com");
-            Assert.NotNull(user.LastLoginAt);
-            Assert.Equal("google-sub-123", user.ExternalUserId);
-        }
+        await _manager.ValidateAndUpdateGoogleUserAsync("test@example.com", "google-sub-123");
+
+        Assert.NotNull(user.LastLoginAt);
+        Assert.Equal("google-sub-123", user.ExternalUserId);
+        _repoMock.Verify(r => r.UpdateUserAsync(user), Times.Once);
     }
 
     [Fact]
     public async Task ValidateAndUpdateGoogleUserAsync_ExistingUserWithSub_DoesNotOverwrite()
     {
-        var dbName = Guid.NewGuid().ToString();
-        var factory = CreateInMemoryFactory(dbName);
-
-        using (var db = factory.CreateDbContext())
+        var user = new AppUser
         {
-            db.Users.Add(new AppUser
-            {
-                Id = Guid.NewGuid(),
-                Email = "test@example.com",
-                ExternalUserId = "original-sub",
-                IsActive = true,
-                CreatedAt = DateTime.UtcNow
-            });
-            await db.SaveChangesAsync();
-        }
+            Id = Guid.NewGuid(),
+            Email = "test@example.com",
+            ExternalUserId = "original-sub",
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow
+        };
 
-        var manager = new UserManager(factory, Mock.Of<ILogger<UserManager>>());
-        await manager.ValidateAndUpdateGoogleUserAsync("test@example.com", "new-sub-attempt");
+        _repoMock.Setup(r => r.GetUserByEmailAsync("test@example.com"))
+            .ReturnsAsync(user);
 
-        using (var db = factory.CreateDbContext())
-        {
-            var user = await db.Users.FirstAsync(u => u.Email == "test@example.com");
-            Assert.Equal("original-sub", user.ExternalUserId);
-        }
+        await _manager.ValidateAndUpdateGoogleUserAsync("test@example.com", "new-sub-attempt");
+
+        Assert.Equal("original-sub", user.ExternalUserId);
+        _repoMock.Verify(r => r.UpdateUserAsync(user), Times.Once);
     }
 
     [Fact]
     public async Task ValidateAndUpdateGoogleUserAsync_UnknownEmail_Throws()
     {
-        var dbName = Guid.NewGuid().ToString();
-        var factory = CreateInMemoryFactory(dbName);
-
-        var manager = new UserManager(factory, Mock.Of<ILogger<UserManager>>());
+        _repoMock.Setup(r => r.GetUserByEmailAsync("nobody@example.com"))
+            .ReturnsAsync((AppUser?)null);
 
         await Assert.ThrowsAsync<InvalidOperationException>(
-            () => manager.ValidateAndUpdateGoogleUserAsync("nobody@example.com", "sub-123"));
+            () => _manager.ValidateAndUpdateGoogleUserAsync("nobody@example.com", "sub-123"));
     }
 }

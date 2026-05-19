@@ -213,5 +213,19 @@ namespace EsheChatService.Services.Repositories
             }
             return user?.Id ?? Guid.Empty;
         }
+
+        public async Task<AppUser?> GetUserByEmailAsync(string email)
+        {
+            using var db = _dbFactory.CreateDbContext();
+            return await db.Users.FirstOrDefaultAsync(u => u.Email == email);
+        }
+
+        public async Task UpdateUserAsync(AppUser user)
+        {
+            using var db = _dbFactory.CreateDbContext();
+            db.Users.Update(user);
+            await db.SaveChangesAsync();
+            _logger.LogDebug("User updated: {UserId}", user.Id);
+        }
     }
 }

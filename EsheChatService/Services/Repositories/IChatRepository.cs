@@ -30,5 +30,9 @@ namespace EsheChatService.Services.Repositories
         Task UpdateSharedSessionAsync(SharedSession sharedSession);
         
         Task<Guid> GetUserIdByEmailAsync(string email);
+
+        // User operations
+        Task<AppUser?> GetUserByEmailAsync(string email);
+        Task UpdateUserAsync(AppUser user);
     }
 }

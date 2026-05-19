@@ -2,6 +2,7 @@ using EsheChatService.Components;
 using EsheChatService.Data;
 using EsheChatService.Hubs;
 using EsheChatService.Services;
+using EsheChatService.Services.User;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
@@ -38,10 +39,14 @@ try
 
     builder.Services.AddScoped<ChatService>();
     builder.Services.AddScoped<EsheChatService.Services.Repositories.IChatRepository, EsheChatService.Services.Repositories.ChatRepository>();
+    builder.Services.AddScoped<EsheChatService.Services.Sessions.ISessionService, EsheChatService.Services.Sessions.SessionService>();
+    builder.Services.AddScoped<EsheChatService.Services.Folders.IFolderService, EsheChatService.Services.Folders.FolderService>();
+    builder.Services.AddScoped<EsheChatService.Services.Messages.IMessageService, EsheChatService.Services.Messages.MessageService>();
+    builder.Services.AddScoped<EsheChatService.Services.Sharing.IShareService, EsheChatService.Services.Sharing.ShareService>();
     builder.Services.AddScoped<ChatSessionManager>();
     builder.Services.AddScoped<ToastService>();
     builder.Services.AddHttpClient<ChatService>();
-    builder.Services.AddScoped<UserManager>();
+    builder.Services.AddScoped<EsheChatService.Services.User.IUserManager, EsheChatService.Services.User.UserManager>();
     builder.Services.AddHttpContextAccessor();
     builder.Services.AddScoped<ICurrentUser, CurrentUser>();
     builder.Services.AddSignalR();
@@ -74,7 +79,7 @@ try
                 }
 
                 var userManager = ctx.HttpContext.RequestServices
-                    .GetRequiredService<UserManager>();
+                    .GetRequiredService<EsheChatService.Services.User.IUserManager>();
 
                 try
                 {

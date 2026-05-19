@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using EsheChatService.Models;
 using EsheChatService.Services;
+using EsheChatService.Services.User;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;

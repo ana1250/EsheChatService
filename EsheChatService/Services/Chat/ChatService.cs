@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using EsheChatService.Models;
+using EsheChatService.Services.User;
 
 namespace EsheChatService.Services
 {
