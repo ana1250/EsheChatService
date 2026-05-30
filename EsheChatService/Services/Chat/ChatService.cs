@@ -17,7 +17,7 @@ namespace EsheChatService.Services
         {
             "Hi! Please sign in to use the full features of Eshe Chat.",
             "Welcome! To get the best experience and save your chats, please sign in.",
-            "Hello there! Most of my advanced features require a signed-in account. Please log in to continue.",
+            "Hello there! Most of my advanced features require a signed-in account. Please sign in to continue.",
             "It looks like you're browsing as a guest. Please sign in to unlock my full potential!",
             "To keep this conversation going and access all tools, please take a moment to sign in."
         };

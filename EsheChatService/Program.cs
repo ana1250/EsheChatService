@@ -45,7 +45,8 @@ try
     builder.Services.AddScoped<EsheChatService.Services.Sharing.IShareService, EsheChatService.Services.Sharing.ShareService>();
     builder.Services.AddScoped<ChatSessionManager>();
     builder.Services.AddScoped<ToastService>();
-    builder.Services.AddHttpClient<ChatService>();
+    builder.Services.AddHttpClient<ChatService>()
+        .AddStandardResilienceHandler();
     builder.Services.AddScoped<EsheChatService.Services.User.IUserManager, EsheChatService.Services.User.UserManager>();
     builder.Services.AddHttpContextAccessor();
     builder.Services.AddScoped<ICurrentUser, CurrentUser>();
