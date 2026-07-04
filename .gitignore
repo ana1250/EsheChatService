@@ -28,3 +28,7 @@ logs/
 # Gemini
 .gemini/
 .agents/
+
+# EF Core Migrations
+[Mm]igrations/
+
