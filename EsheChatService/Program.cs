@@ -2,6 +2,7 @@ using EsheChatService.Components;
 using EsheChatService.Data;
 using EsheChatService.Hubs;
 using EsheChatService.Services;
+using EsheChatService.Services.Chat.Strategies;
 using EsheChatService.Services.Folders;
 using EsheChatService.Services.Messages;
 using EsheChatService.Services.Repositories;
@@ -43,6 +44,15 @@ try
         .AddInteractiveServerComponents();
 
     builder.Services.AddScoped<ChatService>();
+    builder.Services.AddHttpClient<MistralChatStrategy>().AddStandardResilienceHandler();
+    builder.Services.AddHttpClient<OpenAiChatStrategy>().AddStandardResilienceHandler();
+    builder.Services.AddHttpClient<GeminiChatStrategy>().AddStandardResilienceHandler();
+
+    builder.Services.AddScoped<IChatClientStrategy, MistralChatStrategy>();
+    builder.Services.AddScoped<IChatClientStrategy, OpenAiChatStrategy>();
+    builder.Services.AddScoped<IChatClientStrategy, GeminiChatStrategy>();
+    builder.Services.AddScoped<IChatStrategyFactory, ChatStrategyFactory>();
+
     builder.Services.AddScoped<IChatRepository, ChatRepository>();
     builder.Services.AddScoped<ISessionService, SessionService>();
     builder.Services.AddScoped<IFolderService, FolderService>();
@@ -50,8 +60,6 @@ try
     builder.Services.AddScoped<IShareService, ShareService>();
     builder.Services.AddScoped<ChatSessionManager>();
     builder.Services.AddScoped<ToastService>();
-    builder.Services.AddHttpClient<ChatService>()
-        .AddStandardResilienceHandler();
     builder.Services.AddScoped<IUserManager, UserManager>();
     builder.Services.AddHttpContextAccessor();
     builder.Services.AddScoped<ICurrentUser, CurrentUser>();

@@ -10,6 +10,7 @@
 @using EsheChatService.Shared.Icons
 @using EsheChatService.Services
 @using EsheChatService.Models
+@using EsheChatService.Services.Chat.Strategies
 @using Microsoft.AspNetCore.Components.Web
 @using Microsoft.EntityFrameworkCore
 @using Markdig
@@ -17,6 +18,7 @@
 @using EsheChatService.Services.User
 
 @inject ChatService ChatService
+@inject IChatStrategyFactory StrategyFactory
 @inject ChatSessionManager SessionManager
 @inject NavigationManager Nav
 @inject ICurrentUser CurrentUser
@@ -29,11 +31,21 @@
 @implements IAsyncDisposable
 
 <div class="chat-container">
+    <div class="chat-header" style="display: flex; justify-content: space-between; align-items: center; padding: 12px 20px; border-bottom: 1px solid var(--border-color, #e5e7eb);">
+        <h3 style="margin: 0; font-size: 1.1rem; font-weight: 600;">@(SessionManager.ActiveSession?.Title ?? "New Chat")</h3>
+        <div class="model-selector" style="display: flex; align-items: center; gap: 8px;">
+            <label style="font-size: 0.8rem; color: #6b7280; margin: 0;">Model:</label>
+            <select class="form-select form-select-sm" @bind="_selectedModelId" disabled="@(_isSending || _isStreaming || IsReadOnly())" style="font-size: 0.85rem; border-radius: 6px; padding: 4px 8px; width: auto; max-width: 220px;">
+                @foreach (var opt in StrategyFactory.GetAvailableModels())
+                {
+                    <option value="@opt.ModelId">@opt.DisplayName (@opt.Provider)</option>
+                }
+            </select>
+        </div>
+    </div>
+
     @if (SessionManager.ActiveSession == null)
     {
-        <div class="chat-header">
-            <h3>New Chat</h3>
-        </div>
         <div class="chat-empty-state">
             <h1>How can I help you?</h1>
             <p>Start a new conversation by typing below.</p>
@@ -41,9 +53,6 @@
     }
     else
     {
-        <div class="chat-header">
-            <h3>@SessionManager.ActiveSession.Title</h3>
-        </div>
 
         <ul class="chat-messages" @ref="_messagesRef" @onscroll="OnMessagesScrolled">
             @foreach (var msg in SessionManager.ActiveSession.Messages)
@@ -162,6 +171,11 @@
     private bool _isSending;
     private bool _assistantTyping;
     private bool _isStreaming;
+    private string _selectedModelId = "mistral-large-latest";
+
+    private AiModelOption SelectedModel =>
+        StrategyFactory.GetAvailableModels().FirstOrDefault(m => m.ModelId == _selectedModelId)
+        ?? StrategyFactory.GetAvailableModels().First(m => m.IsDefault);
 
     private ElementReference _messagesRef;
     private ElementReference _chatInputRef;
@@ -404,7 +418,7 @@
             try
             {
                 await foreach (var chunk in ChatService.GetReplyStreamAsync(
-                    SessionManager.ActiveSession.Messages, currentToken))
+                    SessionManager.ActiveSession.Messages, SelectedModel.Provider, SelectedModel.ModelId, currentToken))
                 {
                     if (!string.IsNullOrEmpty(chunk.Text))
                     {
@@ -472,11 +486,11 @@
                     assistantMsg.AiUsage = new AiUsage
                     {
                         ChatMessageId = assistantMsgId,
-                        Provider = AiProvider.Mistral,
+                        Provider = SelectedModel.Provider,
                         PromptTokens = streamUsage.PromptTokens,
                         CompletionTokens = streamUsage.CompletionTokens,
                         TotalTokens = streamUsage.TotalTokens,
-                        Model = streamModel ?? "mistral-large-latest",
+                        Model = streamModel ?? SelectedModel.ModelId,
                     };
                 }
             }
@@ -489,11 +503,11 @@
             var aiUsageForPersist = streamUsage != null ? new AiUsage
             {
                 ChatMessageId = assistantMsgId,
-                Provider = AiProvider.Mistral,
+                Provider = SelectedModel.Provider,
                 PromptTokens = streamUsage.PromptTokens,
                 CompletionTokens = streamUsage.CompletionTokens,
                 TotalTokens = streamUsage.TotalTokens,
-                Model = streamModel ?? "mistral-large-latest",
+                Model = streamModel ?? SelectedModel.ModelId,
             } : null;
 
             _ = Task.Run(async () =>
@@ -632,7 +646,7 @@
 
         try
         {
-            await foreach (var chunk in ChatService.GetReplyStreamAsync(session.Messages, _cts.Token))
+            await foreach (var chunk in ChatService.GetReplyStreamAsync(session.Messages, SelectedModel.Provider, SelectedModel.ModelId, _cts.Token))
             {
                 if (!string.IsNullOrEmpty(chunk.Text))
                 {
@@ -692,11 +706,11 @@
                 assistantMsg.AiUsage = new AiUsage
                 {
                     ChatMessageId = assistantMsgId,
-                    Provider = AiProvider.Mistral,
+                    Provider = SelectedModel.Provider,
                     PromptTokens = streamUsage.PromptTokens,
                     CompletionTokens = streamUsage.CompletionTokens,
                     TotalTokens = streamUsage.TotalTokens,
-                    Model = streamModel ?? "mistral-large-latest",
+                    Model = streamModel ?? SelectedModel.ModelId,
                 };
             }
         }
@@ -709,11 +723,11 @@
         var aiUsageForPersist = streamUsage != null ? new AiUsage
         {
             ChatMessageId = assistantMsgId,
-            Provider = AiProvider.Mistral,
+            Provider = SelectedModel.Provider,
             PromptTokens = streamUsage.PromptTokens,
             CompletionTokens = streamUsage.CompletionTokens,
             TotalTokens = streamUsage.TotalTokens,
-            Model = streamModel ?? "mistral-large-latest",
+            Model = streamModel ?? SelectedModel.ModelId,
         } : null;
 
         _ = Task.Run(async () =>
