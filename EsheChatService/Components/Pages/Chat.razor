@@ -4,6 +4,7 @@
 @rendermode InteractiveServer
 @using Microsoft.AspNetCore.SignalR.Client
 @using Microsoft.AspNetCore.Http.Connections
+@using System.Diagnostics
 @inject IJSRuntime JS
 
 @using EsheChatService.Shared.Icons
@@ -93,19 +94,19 @@
                         </div>
                     }
 
-                    @if (_tokenUsage.TryGetValue(msg.Id, out var usage))
+                    @if (msg.AiUsage != null)
                     {
                         <div class="token-usage">
-                            <span title="Prompt tokens">⬆ @usage.PromptTokens</span>
-                            <span title="Completion tokens">⬇ @usage.CompletionTokens</span>
-                            <span title="Total tokens">Σ @usage.TotalTokens</span>
+                            <span title="Prompt tokens">⬆ @msg.AiUsage.PromptTokens</span>
+                            <span title="Completion tokens">⬇ @msg.AiUsage.CompletionTokens</span>
+                            <span title="Total tokens">Σ @msg.AiUsage.TotalTokens</span>
                         </div>
                     }
 
                 </li>
             }
 
-            @if (_assistantTyping)
+            @if (_assistantTyping && !_isStreaming)
             {
                 <li class="message-wrapper assistant">
                     <div class="avatar assistant">
@@ -160,6 +161,7 @@
     private string UserInput = "";
     private bool _isSending;
     private bool _assistantTyping;
+    private bool _isStreaming;
 
     private ElementReference _messagesRef;
     private ElementReference _chatInputRef;
@@ -168,7 +170,7 @@
     private ScrollIntent _scrollIntent = ScrollIntent.None;
     private bool _shouldFocusChatInput = true;
     private CancellationTokenSource? _cts;
-    private readonly Dictionary<Guid, TokenUsage> _tokenUsage = new();
+    private readonly Stopwatch _streamRenderThrottle = new();
 
     HubConnection? _hub;
     
@@ -386,26 +388,64 @@
 
             _cts = new CancellationTokenSource();
             var currentToken = _cts.Token; // Capture local to this specific Send() invocation
-            string reply;
-            TokenUsage? tokenUsage = null;
+
+            // Create assistant message immediately with empty content for streaming
+            var assistantMsgId = Guid.NewGuid();
+            SessionManager.AddMessageInMemory(ChatRole.Assistant, "", assistantMsgId);
+            _isStreaming = true;
+            _scrollIntent = ScrollIntent.ForceScroll;
+            await InvokeAsync(StateHasChanged);
+
+            var replyBuilder = new System.Text.StringBuilder();
+            _streamRenderThrottle.Restart();
+            TokenUsage? streamUsage = null;
+            string? streamModel = null;
+
             try
             {
-                var chatReply = await ChatService.GetReplyAsync(
-                    SessionManager.ActiveSession.Messages, currentToken);
-                reply = chatReply.Content;
-                tokenUsage = chatReply.Usage;
+                await foreach (var chunk in ChatService.GetReplyStreamAsync(
+                    SessionManager.ActiveSession.Messages, currentToken))
+                {
+                    if (!string.IsNullOrEmpty(chunk.Text))
+                    {
+                        replyBuilder.Append(chunk.Text);
+                        SessionManager.UpdateMessageContent(assistantMsgId, replyBuilder.ToString());
+                    }
+
+                    if (chunk.Usage != null)
+                        streamUsage = chunk.Usage;
+                    if (chunk.Model != null)
+                        streamModel = chunk.Model;
+
+                    // Throttle UI re-renders to ~50ms intervals
+                    if (_streamRenderThrottle.ElapsedMilliseconds >= 50)
+                    {
+                        _scrollIntent = ScrollIntent.ForceScroll;
+                        await InvokeAsync(StateHasChanged);
+                        _streamRenderThrottle.Restart();
+                    }
+                }
             }
-            catch (TaskCanceledException)
+            catch (OperationCanceledException)
             {
-                reply = "*(Generation stopped by user)*";
+                if (replyBuilder.Length == 0)
+                    replyBuilder.Append("*(Generation stopped by user)*");
+                else
+                    replyBuilder.Append("\n\n*(Generation stopped by user)*");
+                SessionManager.UpdateMessageContent(assistantMsgId, replyBuilder.ToString());
             }
             catch (Exception ex)
             {
                 Logger.LogError(ex, "AI request failed for session {SessionId}", SessionManager.ActiveSession?.Id);
-                reply = "**Error:** Something went wrong. Please try again.";
+                if (replyBuilder.Length == 0)
+                    replyBuilder.Append("**Error:** Something went wrong. Please try again.");
+                else
+                    replyBuilder.Append("\n\n**Error:** Something went wrong. Please try again.");
+                SessionManager.UpdateMessageContent(assistantMsgId, replyBuilder.ToString());
             }
 
-            // Only clear typing UI if it hasn't been cleared by signalR or cancellation
+            _streamRenderThrottle.Stop();
+            _isStreaming = false;
             _assistantTyping = false;
             if (_cts != null && _cts.Token == currentToken)
             {
@@ -421,13 +461,40 @@
                     false);
             }
 
-            var assistantMsgId = Guid.NewGuid();
-            SessionManager.AddMessageInMemory(ChatRole.Assistant, reply, assistantMsgId);
-            if (tokenUsage != null)
-                _tokenUsage[assistantMsgId] = tokenUsage;
+            var finalReply = replyBuilder.ToString();
+
+            // Attach AiUsage to the in-memory message if we received usage data
+            if (streamUsage != null)
+            {
+                var assistantMsg = SessionManager.ActiveSession.Messages.FirstOrDefault(m => m.Id == assistantMsgId);
+                if (assistantMsg != null)
+                {
+                    assistantMsg.AiUsage = new AiUsage
+                    {
+                        ChatMessageId = assistantMsgId,
+                        Provider = AiProvider.Mistral,
+                        PromptTokens = streamUsage.PromptTokens,
+                        CompletionTokens = streamUsage.CompletionTokens,
+                        TotalTokens = streamUsage.TotalTokens,
+                        Model = streamModel ?? "mistral-large-latest",
+                    };
+                }
+            }
+
             _scrollIntent = ScrollIntent.ForceScroll;
             _shouldFocusChatInput = true;
             await InvokeAsync(StateHasChanged);
+
+            // Capture AiUsage for background persistence
+            var aiUsageForPersist = streamUsage != null ? new AiUsage
+            {
+                ChatMessageId = assistantMsgId,
+                Provider = AiProvider.Mistral,
+                PromptTokens = streamUsage.PromptTokens,
+                CompletionTokens = streamUsage.CompletionTokens,
+                TotalTokens = streamUsage.TotalTokens,
+                Model = streamModel ?? "mistral-large-latest",
+            } : null;
 
             _ = Task.Run(async () =>
             {
@@ -438,13 +505,15 @@
 
                     if (_hub != null && _hub.State == HubConnectionState.Connected)
                     {
-                        await _hub.InvokeAsync("SendAssistantMessage", currentSessionId, assistantMsgId, reply);
+                        await _hub.InvokeAsync("SendAssistantMessage", currentSessionId, assistantMsgId, finalReply);
                     }
 
                     var exists = await repo.MessageExistsAsync(assistantMsgId);
                     if (!exists) 
                     {
-                        await repo.UpdateSessionTimeAndAddMessageAsync(currentSessionId, DateTime.UtcNow, new ChatMessage(ChatRole.Assistant, reply, currentSessionId) { Id = assistantMsgId });
+                        var msgToSave = new ChatMessage(ChatRole.Assistant, finalReply, currentSessionId) { Id = assistantMsgId };
+                        msgToSave.AiUsage = aiUsageForPersist;
+                        await repo.UpdateSessionTimeAndAddMessageAsync(currentSessionId, DateTime.UtcNow, msgToSave);
                     }
                 }
                 catch (Exception ex)
@@ -536,7 +605,6 @@
         if (lastAssistant == null) return;
 
         // 2. Remove it (memory)
-        _tokenUsage.Remove(lastAssistant.Id);
         session.Messages.Remove(lastAssistant);
 
         // 3. Remove it (DB)
@@ -549,22 +617,59 @@
         await InvokeAsync(StateHasChanged);
 
         _cts = new CancellationTokenSource();
-        string reply;
-        TokenUsage? tokenUsage = null;
+
+        // Create assistant message immediately with empty content for streaming
+        var assistantMsgId = Guid.NewGuid();
+        SessionManager.AddMessageInMemory(ChatRole.Assistant, "", assistantMsgId);
+        _isStreaming = true;
+        _scrollIntent = ScrollIntent.ForceScroll;
+        await InvokeAsync(StateHasChanged);
+
+        var replyBuilder = new System.Text.StringBuilder();
+        _streamRenderThrottle.Restart();
+        TokenUsage? streamUsage = null;
+        string? streamModel = null;
+
         try
         {
-            var chatReply = await ChatService.GetReplyAsync(session.Messages, _cts.Token);
-            reply = chatReply.Content;
-            tokenUsage = chatReply.Usage;
+            await foreach (var chunk in ChatService.GetReplyStreamAsync(session.Messages, _cts.Token))
+            {
+                if (!string.IsNullOrEmpty(chunk.Text))
+                {
+                    replyBuilder.Append(chunk.Text);
+                    SessionManager.UpdateMessageContent(assistantMsgId, replyBuilder.ToString());
+                }
+
+                if (chunk.Usage != null)
+                    streamUsage = chunk.Usage;
+                if (chunk.Model != null)
+                    streamModel = chunk.Model;
+
+                // Throttle UI re-renders to ~50ms intervals
+                if (_streamRenderThrottle.ElapsedMilliseconds >= 50)
+                {
+                    _scrollIntent = ScrollIntent.ForceScroll;
+                    await InvokeAsync(StateHasChanged);
+                    _streamRenderThrottle.Restart();
+                }
+            }
         }
-        catch (TaskCanceledException)
+        catch (OperationCanceledException)
         {
-            reply = "*(Generation stopped by user)*";
+            if (replyBuilder.Length == 0)
+                replyBuilder.Append("*(Generation stopped by user)*");
+            else
+                replyBuilder.Append("\n\n*(Generation stopped by user)*");
+            SessionManager.UpdateMessageContent(assistantMsgId, replyBuilder.ToString());
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Regenerate AI request failed for session {SessionId}", currentSessionId);
-            reply = "**Error:** Something went wrong. Please try again.";
+            if (replyBuilder.Length == 0)
+                replyBuilder.Append("**Error:** Something went wrong. Please try again.");
+            else
+                replyBuilder.Append("\n\n**Error:** Something went wrong. Please try again.");
+            SessionManager.UpdateMessageContent(assistantMsgId, replyBuilder.ToString());
         }
         finally
         {
@@ -572,15 +677,44 @@
             _cts = null;
         }
 
+        _streamRenderThrottle.Stop();
+        _isStreaming = false;
         _assistantTyping = false;
 
-        var assistantMsgId = Guid.NewGuid();
-        SessionManager.AddMessageInMemory(ChatRole.Assistant, reply, assistantMsgId);
-        if (tokenUsage != null)
-            _tokenUsage[assistantMsgId] = tokenUsage;
+        var finalReply = replyBuilder.ToString();
+
+        // Attach AiUsage to the in-memory message if we received usage data
+        if (streamUsage != null)
+        {
+            var assistantMsg = session.Messages.FirstOrDefault(m => m.Id == assistantMsgId);
+            if (assistantMsg != null)
+            {
+                assistantMsg.AiUsage = new AiUsage
+                {
+                    ChatMessageId = assistantMsgId,
+                    Provider = AiProvider.Mistral,
+                    PromptTokens = streamUsage.PromptTokens,
+                    CompletionTokens = streamUsage.CompletionTokens,
+                    TotalTokens = streamUsage.TotalTokens,
+                    Model = streamModel ?? "mistral-large-latest",
+                };
+            }
+        }
+
         _scrollIntent = ScrollIntent.ForceScroll;
         _shouldFocusChatInput = true;
         await InvokeAsync(StateHasChanged);
+
+        // Capture AiUsage for background persistence
+        var aiUsageForPersist = streamUsage != null ? new AiUsage
+        {
+            ChatMessageId = assistantMsgId,
+            Provider = AiProvider.Mistral,
+            PromptTokens = streamUsage.PromptTokens,
+            CompletionTokens = streamUsage.CompletionTokens,
+            TotalTokens = streamUsage.TotalTokens,
+            Model = streamModel ?? "mistral-large-latest",
+        } : null;
 
         _ = Task.Run(async () =>
         {
@@ -591,13 +725,15 @@
 
                 if (_hub != null && _hub.State == HubConnectionState.Connected)
                 {
-                    await _hub.InvokeAsync("SendAssistantMessage", currentSessionId, assistantMsgId, reply);
+                    await _hub.InvokeAsync("SendAssistantMessage", currentSessionId, assistantMsgId, finalReply);
                 }
 
                 var exists = await repo.MessageExistsAsync(assistantMsgId);
                 if (!exists) 
                 {
-                    await repo.UpdateSessionTimeAndAddMessageAsync(currentSessionId, DateTime.UtcNow, new ChatMessage(ChatRole.Assistant, reply, currentSessionId) { Id = assistantMsgId });
+                    var msgToSave = new ChatMessage(ChatRole.Assistant, finalReply, currentSessionId) { Id = assistantMsgId };
+                    msgToSave.AiUsage = aiUsageForPersist;
+                    await repo.UpdateSessionTimeAndAddMessageAsync(currentSessionId, DateTime.UtcNow, msgToSave);
                 }
             }
             catch (Exception ex)

@@ -1,4 +1,4 @@
-﻿namespace EsheChatService.Models
+namespace EsheChatService.Models
 {
     public enum ChatRole
     {
@@ -15,6 +15,11 @@
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         public Guid ChatSessionId { get; set; }
+
+        /// <summary>
+        /// Token usage and model metadata (only populated for assistant messages).
+        /// </summary>
+        public AiUsage? AiUsage { get; set; }
 
         public ChatMessage() { }
         public ChatMessage(ChatRole role, string content, Guid chatSessionId)

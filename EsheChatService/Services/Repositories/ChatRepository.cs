@@ -31,6 +31,7 @@ namespace EsheChatService.Services.Repositories
             return await db.ChatSessions
                 .Where(s => s.UserOwnerId == userId)
                 .Include(s => s.Messages)
+                    .ThenInclude(m => m.AiUsage)
                 .OrderByDescending(s => s.UpdatedAt)
                 .ToListAsync();
         }
@@ -45,6 +46,7 @@ namespace EsheChatService.Services.Repositories
                 )
                 .Include(sh => sh.ChatSession)
                     .ThenInclude(s => s.Messages)
+                        .ThenInclude(m => m.AiUsage)
                 .OrderByDescending(sh => sh.ChatSession.UpdatedAt)
                 .Select(sh => sh.ChatSession)
                 .ToListAsync();
@@ -121,6 +123,7 @@ namespace EsheChatService.Services.Repositories
             using var db = _dbFactory.CreateDbContext();
             return await db.ChatMessages
                 .Where(m => m.ChatSessionId == sessionId)
+                .Include(m => m.AiUsage)
                 .OrderBy(m => m.CreatedAt)
                 .ThenBy(m => m.Role)
                 .ToListAsync();
@@ -156,6 +159,11 @@ namespace EsheChatService.Services.Repositories
                 session.UpdatedAt = updatedAt;
             }
             db.ChatMessages.Add(message);
+            // Persist AiUsage if attached to the message
+            if (message.AiUsage != null)
+            {
+                db.AiUsages.Add(message.AiUsage);
+            }
             await db.SaveChangesAsync();
             _logger.LogDebug("Message persisted with session update: {MessageId} Role={Role} Session={SessionId}",
                 message.Id, message.Role, sessionId);

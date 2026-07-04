@@ -251,6 +251,18 @@ namespace EsheChatService.Services
             return msg;
         }
 
+        /// <summary>
+        /// Updates the content of an existing in-memory message (used for streaming token accumulation).
+        /// </summary>
+        public void UpdateMessageContent(Guid messageId, string content)
+        {
+            if (ActiveSession == null) return;
+
+            var msg = ActiveSession.Messages.FirstOrDefault(m => m.Id == messageId);
+            if (msg != null)
+                msg.Content = content;
+        }
+
         public async Task DeleteMessageAsync(Guid messageId)
         {
             await _messageService.DeleteAsync(messageId, _currentUser.UserId, _sessions);

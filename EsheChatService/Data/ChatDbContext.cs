@@ -1,4 +1,4 @@
-﻿using EsheChatService.Models;
+using EsheChatService.Models;
 using Microsoft.EntityFrameworkCore;
 
 namespace EsheChatService.Data
@@ -13,6 +13,7 @@ namespace EsheChatService.Data
         public DbSet<ChatFolder> ChatFolders => Set<ChatFolder>();
         public DbSet<AppUser> Users => Set<AppUser>();
         public DbSet<SharedSession> SharedSessions => Set<SharedSession>();
+        public DbSet<AiUsage> AiUsages => Set<AiUsage>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -76,6 +77,34 @@ namespace EsheChatService.Data
                       .IsRequired();
             });
 
+            /* ---------------- AiUsage ---------------- */
+
+            modelBuilder.Entity<AiUsage>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+
+                entity.HasOne(e => e.ChatMessage)
+                      .WithOne(m => m.AiUsage)
+                      .HasForeignKey<AiUsage>(e => e.ChatMessageId)
+                      .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasIndex(e => e.ChatMessageId)
+                      .IsUnique();
+
+                entity.Property(e => e.Provider)
+                      .IsRequired();
+
+                entity.Property(e => e.Model)
+                      .IsRequired()
+                      .HasMaxLength(100);
+
+                entity.Property(e => e.ModelVersion)
+                      .HasMaxLength(100);
+
+                entity.Property(e => e.CreatedAt)
+                      .IsRequired();
+            });
+
             modelBuilder.Entity<SharedSession>(entity =>
             {
                 entity.HasKey(e => e.Id);
@@ -88,4 +117,5 @@ namespace EsheChatService.Data
 
         }
     }
+
 }
